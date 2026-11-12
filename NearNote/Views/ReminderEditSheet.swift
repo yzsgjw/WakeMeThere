@@ -133,12 +133,12 @@ struct ReminderComposerView: View {
                 }
 
                 NavigationLink {
-                    MapPlacePickerView(onSelect: choose)
+                    MapPickerView(onSelect: choose, radius: customRadius)
                 } label: {
                     ComposerDestinationRow(
                         symbol: "map",
-                        title: "Choose on map",
-                        subtitle: "Drop a pin anywhere"
+                        title: "在地图上选点",
+                        subtitle: "圆圈就是提醒范围，拖到站点上"
                     )
                 }
 
@@ -415,87 +415,6 @@ private struct PlaceResultRow: View {
             }
         }
         .padding(.vertical, 5)
-    }
-}
-
-private struct MapPlacePickerView: View {
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var locationService: LocationService
-    let onSelect: (Place) -> Void
-    @State private var position: MapCameraPosition = .automatic
-    @State private var isResolving = false
-
-    var body: some View {
-        GeometryReader { geometry in
-            MapReader { proxy in
-                Map(position: $position) { UserAnnotation() }
-                    .mapControls {
-                        MapUserLocationButton()
-                        MapCompass()
-                    }
-                    .overlay {
-                        Image(systemName: "mappin.circle.fill")
-                            .font(.system(size: 38))
-                            .foregroundStyle(NearNoteStyle.accent)
-                            .offset(y: -19)
-                            .allowsHitTesting(false)
-                    }
-                    .safeAreaInset(edge: .bottom) {
-                        Button {
-                            guard let coordinate = proxy.convert(
-                                CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2),
-                                from: .local
-                            ) else { return }
-                            resolve(coordinate)
-                        } label: {
-                            if isResolving {
-                                ProgressView().frame(maxWidth: .infinity)
-                            } else {
-                                Text("Use This Location").frame(maxWidth: .infinity)
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .disabled(isResolving)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 10)
-                    }
-            }
-        }
-        .navigationTitle("Choose on Map")
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            if let coordinate = locationService.currentLocation?.coordinate {
-                position = .region(MKCoordinateRegion(
-                    center: coordinate,
-                    latitudinalMeters: 1_200,
-                    longitudinalMeters: 1_200
-                ))
-            }
-        }
-    }
-
-    private func resolve(_ coordinate: CLLocationCoordinate2D) {
-        isResolving = true
-        Task {
-            let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-            let placemark = (try? await CLGeocoder().reverseGeocodeLocation(location))?.first
-            let detected = PlaceCategory.detect(from: [
-                placemark?.name ?? "",
-                placemark?.areasOfInterest?.joined(separator: " ") ?? ""
-            ])
-            let place = Place(
-                name: placemark?.areasOfInterest?.first ?? placemark?.name ?? "Dropped Pin",
-                address: [placemark?.thoroughfare, placemark?.locality].compactMap { $0 }.joined(separator: ", "),
-                latitude: coordinate.latitude,
-                longitude: coordinate.longitude,
-                provider: .manual,
-                category: detected.category,
-                categoryConfidence: detected.confidence
-            )
-            onSelect(place)
-            dismiss()
-        }
     }
 }
 

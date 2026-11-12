@@ -11,6 +11,7 @@ struct LocationPickerView: View {
     @State private var isResolvingLink = false
     @State private var linkError: LinkResolverError?
     @State private var showAllSavedPlaces = false
+    @State private var showMapPicker = false
 
     @Query(filter: #Predicate<SavedPlace> { $0.typeRaw == "recent" }, sort: \SavedPlace.lastUsedAt, order: .reverse)
     private var recentPlaces: [SavedPlace]
@@ -25,7 +26,34 @@ struct LocationPickerView: View {
             ZStack {
                 NearNoteBackground()
                 List {
-                    if query.isEmpty { savedContent }
+                    if query.isEmpty {
+                        Section {
+                            Button {
+                                showMapPicker = true
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "map.fill")
+                                        .foregroundStyle(.white)
+                                        .frame(width: 34, height: 34)
+                                        .background(NearNoteStyle.accent, in: Circle())
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("在地图上选点").foregroundStyle(.white)
+                                        Text("站点、路口、小区门口，搜不到就在地图上点")
+                                            .font(.caption)
+                                            .foregroundStyle(NearNoteStyle.secondaryText)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .listRowBackground(NearNoteStyle.raisedSurface)
+                        }
+                        savedContent
+                    }
                     if isResolvingLink {
                         HStack(spacing: 14) {
                             Image("pebble_searching")
@@ -46,13 +74,13 @@ struct LocationPickerView: View {
                 .scrollContentBackground(.hidden)
                 .listRowBackground(NearNoteStyle.surface)
             }
-            .navigationTitle("Choose a place")
+            .navigationTitle("选择地点")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, prompt: "Search or paste a map link")
+            .searchable(text: $query, prompt: "搜地点，或粘贴地图链接")
             .onChange(of: query) { _, value in handle(value) }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("取消") { dismiss() }
                 }
             }
             .alert("Can’t open this link", isPresented: Binding(
@@ -65,23 +93,34 @@ struct LocationPickerView: View {
             }
         }
         .tint(NearNoteStyle.accent)
+        .sheet(isPresented: $showMapPicker) {
+            NavigationStack {
+                MapPickerView(onSelect: useFromMap)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("取消") { showMapPicker = false }
+                        }
+                    }
+            }
+            .tint(NearNoteStyle.accent)
+        }
     }
 
     @ViewBuilder private var savedContent: some View {
         if !savedPlaces.isEmpty {
-            Section("Saved") {
+            Section("收藏") {
                 ForEach(Array(savedPlaces.prefix(2))) { place in savedButton(place) }
                 if savedPlaces.count > 2 {
                     DisclosureGroup(isExpanded: $showAllSavedPlaces) {
                         ForEach(Array(savedPlaces.dropFirst(2))) { place in savedButton(place) }
                     } label: {
-                        Text(showAllSavedPlaces ? "Show fewer" : "Show \(savedPlaces.count - 2) more")
+                        Text(showAllSavedPlaces ? "收起" : "再看 \(savedPlaces.count - 2) 个")
                     }
                 }
             }
         }
         if !recentPlaces.isEmpty {
-            Section("Recent") {
+            Section("最近") {
                 ForEach(recentPlaces.prefix(6)) { place in
                     Button { select(place.asPlace) } label: {
                         HStack(spacing: 12) {
@@ -155,6 +194,13 @@ struct LocationPickerView: View {
         } else {
             searchService.search(query: value, near: locationService.currentLocation?.coordinate)
         }
+    }
+
+    /// 地图选点回来：MapPickerView 自己已经记过一条"最近"，不再重复插入。
+    private func useFromMap(_ place: Place) {
+        showMapPicker = false
+        onPlaceSelected(place)
+        dismiss()
     }
 
     private func select(_ place: Place) {

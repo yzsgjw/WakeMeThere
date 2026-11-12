@@ -76,7 +76,7 @@ struct MapPickerView: View {
             Text("收藏后会出现在「收藏地点」里，下次选站一点就到。")
         }
         .onAppear {
-            if diameter == 0 { diameter = min(4000, max(100, radius * 2)) }
+            if diameter == 0 { diameter = min(4000, max(200, radius * 2)) }
             recenterOnUser()
             geocodeTask?.cancel()
             if let coordinate = center { scheduleReverseGeocode(coordinate) }
@@ -191,14 +191,14 @@ struct MapPickerView: View {
                         .font(NearNoteStyle.Typeface.label)
                         .foregroundStyle(NearNoteStyle.textSecondary)
                     Spacer()
-                    Text("直径 \(distanceText(diameter)) · 半径 \(distanceText(diameter / 2))")
+                    Text("直径 \(distanceText(previewRadius * 2)) · 半径 \(distanceText(previewRadius))")
                         .font(NearNoteStyle.Typeface.micro)
                         .foregroundStyle(NearNoteStyle.accent)
                         .monospacedDigit()
                 }
                 Slider(
                     value: $diameter,
-                    in: 100...4000,
+                    in: 200...4000,
                     step: 50,
                     minimumValueLabel: Text("100m")
                         .font(NearNoteStyle.Typeface.micro)
@@ -257,7 +257,7 @@ struct MapPickerView: View {
 
     /// 圆圈实际画的半径（米）
     private var previewRadius: Double {
-        max(60, (diameter > 0 ? diameter : max(200, radius * 2)) / 2)
+        max(100, (diameter > 0 ? diameter : max(200, radius * 2)) / 2)
     }
 
     private func distanceText(_ meters: Double) -> String {

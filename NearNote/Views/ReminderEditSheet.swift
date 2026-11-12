@@ -108,7 +108,7 @@ struct ReminderComposerView: View {
             .scrollContentBackground(.hidden)
             .background(NearNoteBackground())
             .tint(NearNoteStyle.accent)
-            .scrollDismissesKeyboard(.interactively)
+            .scrollDismissesKeyboard(.immediately)
             .navigationTitle(reminder == nil ? "新建提醒" : "编辑提醒")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(NearNoteStyle.canvas.opacity(0.94), for: .navigationBar)
@@ -123,8 +123,14 @@ struct ReminderComposerView: View {
                 }
             }
             .onAppear {
-                if reminder == nil { titleFocused = true }
-                locationService.startInUseTracking()
+                // 两件事都别在这里做：
+                // 1) 抢焦点 —— sheet 转场没结束就弹键盘，键盘之外的区域会整块点不动；
+                // 2) 请求定位权限 —— 系统授权框盖在 sheet 上，关掉之后这张表照样点不动。
+                // 只复用已经拿到的定位，权限交给追踪页在开始追踪时申请。
+                if locationService.authorizationStatus == .authorizedWhenInUse
+                    || locationService.authorizationStatus == .authorizedAlways {
+                    locationService.startInUseTracking()
+                }
             }
             .onDisappear { locationService.stopInUseTracking() }
         }

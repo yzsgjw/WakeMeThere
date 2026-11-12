@@ -742,6 +742,12 @@ struct AlightingTripView: View {
 
     // MARK: - 底部主按钮
 
+    /// 没有可追踪的项目时不说「开始追踪」这种假话，直接告诉你去哪儿加
+    private var ctaTitle: String {
+        if isTracking { return "结束追踪" }
+        return orderedStations.isEmpty ? "先到「项目」里加一个" : "开始追踪"
+    }
+
     private var ctaBar: some View {
         VStack(spacing: 9) {
             Text(isTracking ? "灵动岛显示下一站距离，锁屏也能看。" : "开始后，接近下一站时手机会响铃并语音播报。")
@@ -750,14 +756,13 @@ struct AlightingTripView: View {
                 .lineLimit(1)
 
             PrimaryActionButton(
-                title: isTracking ? "结束追踪" : "开始追踪",
+                title: ctaTitle,
                 symbol: isTracking ? "stop.circle.fill" : "location.north.line.fill",
-                role: isTracking ? .secondary : .primary
+                role: isTracking || orderedStations.isEmpty ? .secondary : .primary
             ) {
                 toggleTracking()
             }
             .disabled(orderedStations.isEmpty)
-            .opacity(orderedStations.isEmpty ? 0.45 : 1)
         }
         .padding(.horizontal, NearNoteStyle.gutter)
         .padding(.top, 14)
@@ -765,8 +770,8 @@ struct AlightingTripView: View {
         .background {
             LinearGradient(
                 colors: [
-                    NearNoteStyle.canvas.opacity(0),
-                    NearNoteStyle.canvas.opacity(0.92),
+                    NearNoteStyle.canvas.opacity(0.35),
+                    NearNoteStyle.canvas.opacity(0.97),
                     NearNoteStyle.canvas,
                 ],
                 startPoint: .top,

@@ -30,7 +30,16 @@ public final class Reminder {
     public var endTime: Date? = nil
     public var lastTriggeredAt: Date?
     public var snoozedUntil: Date?
-    
+
+    // MARK: - 通勤项目（Routine Plans）
+    // 四个字段都带默认值 → SwiftData 走轻量迁移，老数据自动补齐。
+    /// bit0 = 周日 … bit6 = 周六；默认周一~周五（62 = 0b0111110）
+    public var weekdayMask: Int = 62
+    /// 对应 AlarmChime.rawValue
+    public var chimeName: String = AlarmChime.classic.rawValue
+    public var vibrationEnabled: Bool = true
+    public var fullScreenOnArrival: Bool = true
+
     public init(
         id: UUID = UUID(),
         title: String,
@@ -75,6 +84,30 @@ public final class Reminder {
         self.lastTriggeredAt = lastTriggeredAt
     }
     
+    // MARK: - 通勤项目派生值
+
+    /// 这个项目选的铃声
+    public var chime: AlarmChime {
+        AlarmChime(rawValue: chimeName) ?? .classic
+    }
+
+    /// 现在这一刻这个项目该不该响：既要是启用状态，也要落在它的星期 + 时间窗里
+    public func isScheduled(at now: Date = Date(), calendar: Calendar = .current) -> Bool {
+        isEnabled && !isCompleted && !isArchived &&
+        PlanSchedule.isActive(
+            weekdayMask: weekdayMask,
+            start: startTime,
+            end: endTime,
+            at: now,
+            calendar: calendar
+        )
+    }
+
+    /// 列表行副标题用：「工作日 07:30–09:00」
+    public var scheduleText: String {
+        PlanSchedule.summary(weekdayMask: weekdayMask, start: startTime, end: endTime)
+    }
+
     public var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }

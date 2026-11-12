@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import AudioToolbox
 import UIKit
 import OSLog
 
@@ -11,8 +12,9 @@ private let alarmLog = Logger(subsystem: "com.wayzs999.arrival", category: "Alar
 /// （`AVSpeechSynthesizer`，中文）。顺序是刻意的：先响铃把人从耳机/口袋里拽出来，再播站名。
 ///
 /// 三个必须知道的约束（都来自 iOS 本身，不是实现偷懒）：
-/// 1. **静音拨片无法突破**。`UIBackgroundModes: audio` 只保证「后台能出声」，不保证「静音开关下出声」。
-///    真穿透只有 Critical Alerts，需要 Apple 单独审批，个人/企业签名都拿不到。
+/// 1. **静音拨片只吃系统通知音**。本类自己用 `AVAudioSessionCategoryPlayback` 播的铃声与语音
+///    在静音开关下照样出声（这是实测确认的行为）；被静音吃掉的只有通知自带的
+///    `UNNotificationSound`。要连「静音 + 系统通知」一起穿透，才需要 Critical Alerts 与 Apple 审批。
 /// 2. 围栏唤醒后系统只给很短的后台执行窗口，所以进来第一件事就是 `beginBackgroundTask` 续命，
 ///    否则铃声还没放完 App 就被挂起。
 /// 3. 声音能不能在锁屏时响，取决于 `AVAudioSession` 是否在后台仍然 active ——
@@ -70,12 +72,37 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
         set { UserDefaults.standard.set(min(max(newValue, 0), 1), forKey: DefaultsKey.volume) }
     }
 
+    // MARK: - 本次告警的参数（由调用方按「项目」设置传入）
+
+    /// 这一次要用的铃声
+    private var pendingChime: AlarmChime = .classic
+    /// 这一次要不要震动
+    private var pendingVibration: Bool = true
+
     // MARK: - 对外入口
 
-    /// 到站：先响铃再播报站名。
+    /// 到站：先响铃再播报站名。沿用全局铃声设置（兼容旧调用点）。
     public func announceArrival(stationName: String, extraSentence: String? = nil) {
+        announceArrival(
+            stationName: stationName,
+            chime: AlarmChime.current,
+            vibrate: true,
+            extraSentence: extraSentence
+        )
+    }
+
+    /// 到站：铃声与震动来自这个「通勤项目」自己的设置。
+    public func announceArrival(
+        stationName: String,
+        chime: AlarmChime,
+        vibrate: Bool,
+        extraSentence: String? = nil
+    ) {
+        pendingChime = chime
+        pendingVibration = vibrate
         announce(Self.arrivalSentence(stationName: stationName, extra: extraSentence))
     }
+
 
     /// 通用播报。铃声与语音是否发声各自受设置控制；两者都关时直接返回。
     public func announce(_ text: String) {
@@ -94,6 +121,7 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
 
         beginBackgroundExecution()
         activateSession()
+        vibrateIfNeeded()
 
         if isChimeEnabled, playChime() {
             // 铃声是异步的，语音在 audioPlayerDidFinishPlaying 里接上，避免两段声音叠在一起
@@ -110,9 +138,14 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
     ///
     /// 用在 App 在后台/锁屏时：那一刻系统通知本身已经用 `AlarmChime.wav` 响过了，
     /// 再放一次铃声就是双重奏。这里只补人声。
-    public func speak(_ text: String) {
+    public func speak(_ text: String, vibrate: Bool = false) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isVoiceEnabled, !trimmed.isEmpty else { return }
+        pendingVibration = vibrate
+        guard isVoiceEnabled, !trimmed.isEmpty else {
+            // 语音关了但震动开着：至少震一下
+            vibrateIfNeeded()
+            return
+        }
 
         cancelCurrent()
         AudioKeepAliveService.shared.pauseForAnnouncement()
@@ -121,6 +154,7 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
         isAnnouncing = true
         beginBackgroundExecution()
         activateSession()
+        vibrateIfNeeded()
         speakPending()
         startTimeout()
     }
@@ -148,7 +182,7 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
 
     @discardableResult
     private func playChime() -> Bool {
-        let chime = AlarmChime.current
+        let chime = pendingChime
         guard let url = Bundle.main.url(forResource: chime.resourceName, withExtension: "wav") else {
             alarmLog.error("铃声 \(chime.fileName) 没打进 Bundle，铃声阶段跳过")
             return false
@@ -165,6 +199,12 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
             alarmLog.error("铃声播放失败：\(error.localizedDescription, privacy: .public)")
             return false
         }
+    }
+
+    /// 震动一次。耳机里听不到铃声时，震动是最后的兜底。
+    private func vibrateIfNeeded() {
+        guard pendingVibration else { return }
+        AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
     }
 
     private func speakPending() {

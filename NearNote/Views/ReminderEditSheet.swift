@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 import MapKit
 import CoreLocation
 
@@ -27,6 +28,11 @@ struct ReminderComposerView: View {
     @State private var hasTimeConstraints: Bool
     @State private var startTime: Date
     @State private var endTime: Date
+    // 通勤项目
+    @State private var weekdayMask: Int
+    @State private var chime: AlarmChime
+    @State private var vibrationEnabled: Bool
+    @State private var fullScreenOnArrival: Bool
 
     init(reminder: Reminder? = nil, initialPlace: Place? = nil) {
         self.reminder = reminder
@@ -51,6 +57,10 @@ struct ReminderComposerView: View {
             _hasTimeConstraints = State(initialValue: reminder.startTime != nil)
             _startTime = State(initialValue: reminder.startTime ?? Date())
             _endTime = State(initialValue: reminder.endTime ?? Date().addingTimeInterval(3600))
+            _weekdayMask = State(initialValue: reminder.weekdayMask)
+            _chime = State(initialValue: reminder.chime)
+            _vibrationEnabled = State(initialValue: reminder.vibrationEnabled)
+            _fullScreenOnArrival = State(initialValue: reminder.fullScreenOnArrival)
         } else {
             let settings = SettingsStore.shared
             _selectedPlace = State(initialValue: initialPlace)
@@ -62,6 +72,10 @@ struct ReminderComposerView: View {
             _hasTimeConstraints = State(initialValue: false)
             _startTime = State(initialValue: Date())
             _endTime = State(initialValue: Date().addingTimeInterval(3600))
+            _weekdayMask = State(initialValue: PlanSchedule.weekdaysMask)
+            _chime = State(initialValue: AlarmChime.current)
+            _vibrationEnabled = State(initialValue: true)
+            _fullScreenOnArrival = State(initialValue: true)
         }
     }
 
@@ -84,7 +98,9 @@ struct ReminderComposerView: View {
                 if let place = selectedPlace {
                     triggerSection(for: place)
                     radiusSection
+                    scheduleSection
                     timeSection
+                    alarmSection
                     repeatSection
                 }
             }
@@ -133,7 +149,14 @@ struct ReminderComposerView: View {
                 }
 
                 NavigationLink {
-                    MapPickerView(onSelect: choose, radius: customRadius)
+                    MapPickerView(
+                        onSelect: choose,
+                        radius: customRadius,
+                        onRadiusChange: { newRadius in
+                            customRadius = newRadius
+                            radiusMode = .custom
+                        }
+                    )
                 } label: {
                     ComposerDestinationRow(
                         symbol: "map",
@@ -237,6 +260,70 @@ struct ReminderComposerView: View {
         }
     }
 
+    // MARK: - 星期与提醒方式
+
+    private static let dayOptions: [(label: String, bit: Int)] = [
+        ("一", 1 << 1), ("二", 1 << 2), ("三", 1 << 3), ("四", 1 << 4),
+        ("五", 1 << 5), ("六", 1 << 6), ("日", 1 << 0)
+    ]
+
+    private var scheduleSection: some View {
+        Section {
+            HStack(spacing: 6) {
+                ForEach(Self.dayOptions, id: \.bit) { option in
+                    let on = weekdayMask & option.bit != 0
+                    Button {
+                        weekdayMask ^= option.bit
+                        if weekdayMask == 0 { weekdayMask = PlanSchedule.weekdaysMask }
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    } label: {
+                        Text(option.label)
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(on ? Color.white : NearNoteStyle.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 38)
+                            .background(
+                                on ? NearNoteStyle.accent : NearNoteStyle.surface,
+                                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 2)
+        } header: {
+            Text("生效星期")
+        } footer: {
+            Text("选中的日子才响。至少选一天，默认周一~周五。")
+        }
+    }
+
+    private var alarmSection: some View {
+        Section {
+            Picker("铃声", selection: $chime) {
+                ForEach(AlarmChime.allCases, id: \.self) { item in
+                    Text(item.label).tag(item)
+                }
+            }
+            Button {
+                AlarmPlaybackService.shared.announceArrival(
+                    stationName: selectedPlace?.name ?? "下一站",
+                    chime: chime,
+                    vibrate: vibrationEnabled
+                )
+            } label: {
+                Label("试听", systemImage: "play.circle.fill")
+            }
+
+            Toggle("震动", isOn: $vibrationEnabled)
+            Toggle("到站时全屏提示", isOn: $fullScreenOnArrival)
+        } header: {
+            Text("到站提醒方式")
+        } footer: {
+            Text("项目自己的铃声与震动，不受别处设置影响。全屏提示会在 App 打开着时自动盖满屏幕；锁屏时点通知也能直接进全屏。")
+        }
+    }
+
     private var timeSection: some View {
         Section {
             Toggle("时间限制", isOn: $hasTimeConstraints)
@@ -300,6 +387,10 @@ struct ReminderComposerView: View {
             value.startTime = nil
             value.endTime = nil
         }
+        value.weekdayMask = weekdayMask == 0 ? PlanSchedule.weekdaysMask : weekdayMask
+        value.chimeName = chime.rawValue
+        value.vibrationEnabled = vibrationEnabled
+        value.fullScreenOnArrival = fullScreenOnArrival
 
         if reminder == nil {
             modelContext.insert(value)

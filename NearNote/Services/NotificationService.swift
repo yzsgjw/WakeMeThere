@@ -40,8 +40,7 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
     }
 
     /// 到站铃声。文件不存在时退回系统默认音，不能让通知变成静默。
-    private func arrivalSound() -> UNNotificationSound {
-        let chime = AlarmChime.current
+    private func arrivalSound(for chime: AlarmChime) -> UNNotificationSound {
         if Bundle.main.url(forResource: chime.resourceName, withExtension: "wav") != nil {
             return UNNotificationSound(named: UNNotificationSoundName(chime.fileName))
         }
@@ -63,7 +62,7 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
             content.body = reminder.title.isEmpty ? "已进入提醒范围，请准备下车" : reminder.title
             content.categoryIdentifier = "REMINDER_CATEGORY"
         }
-        content.sound = arrivalSound()
+        content.sound = arrivalSound(for: reminder.chime)
         // 时间敏感通知：无声穿透「专注模式」，不需要任何特殊审批（Critical Alerts 才需要）。
         content.interruptionLevel = .timeSensitive
         content.threadIdentifier = "arrival-alerts"
@@ -84,10 +83,20 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
         // 免打扰时段里通知被推迟了，声音也跟着推迟，否则等于绕过用户设的安静时间
         guard deferred < 2 else { return }
         let extra = reminder.title.isEmpty ? nil : reminder.title
+        // 铃声与震动读「项目」自己的设置，不看全局开关
         if UIApplication.shared.applicationState == .active {
-            AlarmPlaybackService.shared.announceArrival(stationName: stationName, extraSentence: extra)
+            AlarmPlaybackService.shared.announceArrival(
+                stationName: stationName,
+                chime: reminder.chime,
+                vibrate: reminder.vibrationEnabled,
+                extraSentence: extra
+            )
         } else {
-            AlarmPlaybackService.shared.speak(AlarmPlaybackService.arrivalSentence(stationName: stationName, extra: extra))
+            // 后台/锁屏：铃声已经由系统通知响过了，这里只补人声 + 震动
+            AlarmPlaybackService.shared.speak(
+                AlarmPlaybackService.arrivalSentence(stationName: stationName, extra: extra),
+                vibrate: reminder.vibrationEnabled
+            )
         }
     }
 
@@ -113,7 +122,18 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
             case "SNOOZE_ACTION":
                 reminder.snoozedUntil = Date().addingTimeInterval(30 * 60)
                 scheduleSnooze(reminder)
-            case "NAVIGATE_ACTION", UNNotificationDefaultActionIdentifier:
+            case UNNotificationDefaultActionIdentifier:
+                // 点通知本身 → 打开 App 内的到站全屏页
+                if reminder.fullScreenOnArrival {
+                    NotificationCenter.default.post(name: .arrivalOpened, object: reminder.id)
+                } else {
+                    let lat = info["LATITUDE"] as? Double ?? reminder.latitude
+                    let lon = info["LONGITUDE"] as? Double ?? reminder.longitude
+                    if let url = URL(string: "http://maps.apple.com/?daddr=\(lat),\(lon)&dirflg=d") {
+                        await UIApplication.shared.open(url)
+                    }
+                }
+            case "NAVIGATE_ACTION":
                 let lat = info["LATITUDE"] as? Double ?? reminder.latitude
                 let lon = info["LONGITUDE"] as? Double ?? reminder.longitude
                 if let url = URL(string: "http://maps.apple.com/?daddr=\(lat),\(lon)&dirflg=d") { await UIApplication.shared.open(url) }
@@ -129,7 +149,7 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
         let stationName = reminder.placeName.isEmpty ? reminder.title : reminder.placeName
         content.title = "到站提醒 · \(stationName)"
         content.body = reminder.title.isEmpty ? "稍后提醒" : reminder.title
-        content.sound = arrivalSound()
+        content.sound = arrivalSound(for: reminder.chime)
         content.interruptionLevel = .timeSensitive
         content.threadIdentifier = "arrival-alerts"
         content.categoryIdentifier = "REMINDER_CATEGORY"

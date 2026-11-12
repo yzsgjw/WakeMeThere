@@ -113,3 +113,45 @@ jobs:
           path: build.log
           retention-days: 14
           if-no-files-found: ignore
+
+  unit-tests:
+    name: Unit tests (PlanSchedule)
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen 2>/dev/null || brew upgrade xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+
+      - name: Pick an available iPhone simulator
+        run: |
+          UDID=$(xcrun simctl list devices available | grep -m1 "iPhone" | grep -oE "[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}")
+          echo "Picked simulator: $UDID"
+          test -n "$UDID"
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+
+      - name: Run PlanSchedule tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project NearNote.xcodeproj \
+            -scheme NearNote \
+            -destination "platform=iOS Simulator,id=$SIM_UDID" \
+            -derivedDataPath build-test \
+            -only-testing:NearNoteTests/PlanScheduleTests \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee test.log
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-${{ github.run_number }}
+          path: test.log
+          if-no-files-found: warn

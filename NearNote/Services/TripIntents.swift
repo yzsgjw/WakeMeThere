@@ -100,6 +100,8 @@ enum TripCommands {
 extension Notification.Name {
     /// 铃声被锁屏按钮换掉了，App 侧据此刷新设置页显示
     public static let arrivalChimeChanged = Notification.Name("arrival.chimeChanged")
+    /// 到站了，App 应该把全屏页盖上来。object 为 reminder 的 UUID。
+    public static let arrivalOpened = Notification.Name("arrival.opened")
 }
 
 // MARK: - Intents

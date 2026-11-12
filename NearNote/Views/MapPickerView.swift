@@ -21,10 +21,14 @@ struct MapPickerView: View {
     @Query(sort: \SavedPlace.sortOrder) private var allSavedPlaces: [SavedPlace]
 
     let onSelect: (Place) -> Void
-    /// 圆圈半径，只用于预览。调用方通常是"这个提醒的提醒距离"。
+    /// 圆圈初始半径（米）。调用方通常是"这个提醒当前的提醒距离"。
     var radius: Double = 500
+    /// 用户拖了直径滑杆后回调（米，半径值），让编辑页把半径带回去。
+    var onRadiusChange: ((Double) -> Void)? = nil
 
     @State private var camera: MapCameraPosition = .automatic
+    /// 用户选的直径（米）。半径 = 直径 / 2。
+    @State private var diameter: Double = 0
     @State private var center: CLLocationCoordinate2D?
     @State private var resolvedName = ""
     @State private var resolvedAddress = ""
@@ -72,6 +76,7 @@ struct MapPickerView: View {
             Text("收藏后会出现在「收藏地点」里，下次选站一点就到。")
         }
         .onAppear {
+            if diameter == 0 { diameter = min(4000, max(100, radius * 2)) }
             recenterOnUser()
             geocodeTask?.cancel()
             if let coordinate = center { scheduleReverseGeocode(coordinate) }
@@ -88,7 +93,7 @@ struct MapPickerView: View {
 
             if let center {
                 // 半径圆圈：让"300 米"变成看得见的一片
-                MapCircle(center: center, radius: max(60, radius))
+                MapCircle(center: center, radius: previewRadius)
                     .foregroundStyle(NearNoteStyle.accent.opacity(0.14))
                     .stroke(NearNoteStyle.accent.opacity(0.9), lineWidth: 1.5)
 
@@ -179,8 +184,35 @@ struct MapPickerView: View {
                 .disabled(center == nil)
             }
 
+            // 直径滑杆：圈多大由用户直接拖，比在设置里算半径直观
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text("提醒范围")
+                        .font(NearNoteStyle.Typeface.label)
+                        .foregroundStyle(NearNoteStyle.textSecondary)
+                    Spacer()
+                    Text("直径 \(distanceText(diameter)) · 半径 \(distanceText(diameter / 2))")
+                        .font(NearNoteStyle.Typeface.micro)
+                        .foregroundStyle(NearNoteStyle.accent)
+                        .monospacedDigit()
+                }
+                Slider(
+                    value: $diameter,
+                    in: 100...4000,
+                    step: 50,
+                    minimumValueLabel: Text("100m")
+                        .font(NearNoteStyle.Typeface.micro)
+                        .foregroundStyle(NearNoteStyle.textTertiary),
+                    maximumValueLabel: Text("4km")
+                        .font(NearNoteStyle.Typeface.micro)
+                        .foregroundStyle(NearNoteStyle.textTertiary),
+                    label: { Text("提醒范围") }
+                )
+                .tint(NearNoteStyle.accent)
+            }
+
             HStack(spacing: 6) {
-                MetaTag(text: "提醒半径 \(radius.distanceText)", symbol: "circle.dashed", tint: NearNoteStyle.accent)
+                MetaTag(text: "提醒半径 \(distanceText(previewRadius))", symbol: "circle.dashed", tint: NearNoteStyle.accent)
                 if let coordinate = center {
                     MetaTag(text: coordinateText(coordinate), symbol: "mappin.and.ellipse")
                 }
@@ -223,6 +255,15 @@ struct MapPickerView: View {
         }
     }
 
+    /// 圆圈实际画的半径（米）
+    private var previewRadius: Double {
+        max(60, (diameter > 0 ? diameter : max(200, radius * 2)) / 2)
+    }
+
+    private func distanceText(_ meters: Double) -> String {
+        meters >= 1_000 ? String(format: "%.1f km", meters / 1_000) : "\(Int(meters.rounded())) m"
+    }
+
     private var titleText: String {
         if !resolvedName.isEmpty { return resolvedName }
         return isResolving ? "识别中…" : "已选位置"
@@ -258,6 +299,7 @@ struct MapPickerView: View {
             type: .recent
         ))
         try? modelContext.save()
+        onRadiusChange?(previewRadius)
         onSelect(place)
         dismiss()
     }

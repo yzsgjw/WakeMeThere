@@ -5,22 +5,21 @@ struct MainView: View {
     @State private var showComposer = false
     @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding = false
     @State private var composerPlace: Place?
+    @State private var arrivalTarget: ArrivalTarget?
 
     var body: some View {
         Group {
             if hasSeenOnboarding {
                 TabView(selection: $selectedTab) {
-                    AlightingTripView(onAdd: { showComposer = true })
-                        .tabItem { Label("行程", systemImage: "location.north.line.fill") }.tag(0)
+                    PlansView(onAdd: { showComposer = true }, onMap: { selectedTab = 1 })
+                        .tabItem { Label("项目", systemImage: "square.stack.3d.up.fill") }.tag(0)
                     MapView(onAdd: { place in
                         composerPlace = place
                         showComposer = true
                     })
                         .tabItem { Label("地图", systemImage: "map.fill") }.tag(1)
-                    RemindersView(onAdd: { showComposer = true })
-                        .tabItem { Label("站点", systemImage: "list.bullet") }.tag(2)
                     SettingsView()
-                        .tabItem { Label("设置", systemImage: "gearshape.fill") }.tag(3)
+                        .tabItem { Label("设置", systemImage: "gearshape.fill") }.tag(2)
                 }
                 .tint(NearNoteStyle.accent)
             } else {
@@ -30,12 +29,35 @@ struct MainView: View {
         .sheet(isPresented: $showComposer, onDismiss: { composerPlace = nil }) {
             ReminderComposerView(initialPlace: composerPlace)
         }
+        .fullScreenCover(item: $arrivalTarget) { target in
+            if let reminder = ReminderStore.shared.fetchReminder(withId: target.id) {
+                ArrivalFullScreenView(reminder: reminder)
+            } else {
+                NearNoteBackground()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .arrivalOpened)) { note in
+            guard let id = note.object as? UUID else { return }
+            arrivalTarget = ArrivalTarget(id: id)
+        }
         .onOpenURL { url in
-            // 点灵动岛 / 锁屏卡片 → arrival://trip → 回到行程页
-            if url.scheme == "arrival" { selectedTab = 0 }
+            guard url.scheme == "arrival" else { return }
+            // arrival://arrival/<uuid> → 到站全屏页；arrival://trip → 项目页
+            if url.host == "arrival",
+               let raw = url.pathComponents.last,
+               let id = UUID(uuidString: raw) {
+                arrivalTarget = ArrivalTarget(id: id)
+            } else {
+                selectedTab = 0
+            }
         }
         .preferredColorScheme(.dark)
     }
+}
+
+/// fullScreenCover(item:) 需要一个可比较的壳
+private struct ArrivalTarget: Identifiable {
+    let id: UUID
 }
 
 #Preview { MainView().environmentObject(LocationService.shared).environmentObject(NotificationService.shared) }

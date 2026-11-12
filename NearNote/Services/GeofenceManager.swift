@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import UIKit
 import OSLog
 
 private let geofenceLogger = Logger(subsystem: "com.mosaab.NearNote", category: "Geofence")
@@ -87,29 +88,13 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         if let snoozedUntil = reminder.snoozedUntil, snoozedUntil > Date() { return }
         if let last = reminder.lastTriggeredAt, Date().timeIntervalSince(last) < Double(settings.cooldownMinutes * 60) { return }
         
-        // Enforce time constraints
-        if let start = reminder.startTime, let end = reminder.endTime {
-            let calendar = Calendar.current
-            let now = Date()
-            
-            // Extract only the hour and minute from start/end times
-            let startComponents = calendar.dateComponents([.hour, .minute], from: start)
-            let endComponents = calendar.dateComponents([.hour, .minute], from: end)
-            
-            let nowComponents = calendar.dateComponents([.hour, .minute], from: now)
-            let startMinute = (startComponents.hour ?? 0) * 60 + (startComponents.minute ?? 0)
-            let endMinute = (endComponents.hour ?? 0) * 60 + (endComponents.minute ?? 0)
-            let nowMinute = (nowComponents.hour ?? 0) * 60 + (nowComponents.minute ?? 0)
-            let inWindow = startMinute <= endMinute
-                ? (startMinute...endMinute).contains(nowMinute)
-                : nowMinute >= startMinute || nowMinute <= endMinute
-
-            if !inWindow {
-                geofenceLogger.info("Reminder triggered outside of allowed time window. Suppressing.")
-                return
-            }
+        // 生效时段：星期 + 时间窗，纯函数见 PlanSchedule
+        // （围栏按设计常挂，所以「现在是不是该响」必须在这里判，而不是靠注册时机）
+        guard reminder.isScheduled(at: Date()) else {
+            geofenceLogger.info("Reminder outside its schedule (weekday/time window). Suppressing.")
+            return
         }
-        
+
         // 到站复核：围栏事件可能带着过期或很粗的定位到达，
         // 直接响就会变成"人在高架上、隔一条街就被提醒"。
         // 这里主动要一次新定位，用「实际距离 + 定位精度半径」判断是否真进圈。
@@ -122,6 +107,11 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         ReminderStore.shared.save()
         NotificationService.shared.triggerNotification(for: reminder, alternativePlaceName: parsed.placeName,
                                                        alternativeCoordinate: parsed.coordinate)
+
+        // App 正开着时，直接把全屏到站页盖上来（锁屏/后台做不到，只能靠通知点进来）
+        if reminder.fullScreenOnArrival, UIApplication.shared.applicationState == .active {
+            NotificationCenter.default.post(name: .arrivalOpened, object: reminder.id)
+        }
 
         // 多站接力：这一站若是行程队列里的当前站，就自动切下一站
         // （终点则整程收尾：关灵动岛、停保活、恢复普通围栏）

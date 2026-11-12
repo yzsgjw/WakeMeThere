@@ -29,29 +29,43 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
     }
 
     public func setupCategories() {
-        let done = UNNotificationAction(identifier: "DONE_ACTION", title: "Done", options: [])
-        let snooze = UNNotificationAction(identifier: "SNOOZE_ACTION", title: "Later", options: [])
-        let navigate = UNNotificationAction(identifier: "NAVIGATE_ACTION", title: "Navigate", options: [.foreground])
-        let wait = UNNotificationAction(identifier: "WAIT_ORIGINAL_ACTION", title: "Wait for original place", options: [])
+        let done = UNNotificationAction(identifier: "DONE_ACTION", title: "已完成", options: [])
+        let snooze = UNNotificationAction(identifier: "SNOOZE_ACTION", title: "30 分钟后再提醒", options: [])
+        let navigate = UNNotificationAction(identifier: "NAVIGATE_ACTION", title: "导航", options: [.foreground])
+        let wait = UNNotificationAction(identifier: "WAIT_ORIGINAL_ACTION", title: "仍等到原地点", options: [])
         center.setNotificationCategories([
             UNNotificationCategory(identifier: "REMINDER_CATEGORY", actions: [done, snooze, navigate], intentIdentifiers: []),
             UNNotificationCategory(identifier: "ALTERNATIVE_REMINDER_CATEGORY", actions: [done, wait, snooze, navigate], intentIdentifiers: [])
         ])
     }
 
+    /// 到站铃声。文件不存在时退回系统默认音，不能让通知变成静默。
+    private func arrivalSound() -> UNNotificationSound {
+        if Bundle.main.url(forResource: "AlarmChime", withExtension: "wav") != nil {
+            return UNNotificationSound(named: UNNotificationSoundName("AlarmChime.wav"))
+        }
+        return .default
+    }
+
     public func triggerNotification(for reminder: Reminder, alternativePlaceName: String? = nil,
                                     alternativeCoordinate: CLLocationCoordinate2D? = nil) {
         let content = UNMutableNotificationContent()
-        if let alternativePlaceName {
-            content.title = "You’re close to \(alternativePlaceName)"
-            content.body = "You wanted to: \(reminder.title)"
+        let stationName = alternativePlaceName
+            ?? (reminder.placeName.isEmpty ? reminder.title : reminder.placeName)
+
+        if alternativePlaceName != nil {
+            content.title = "快到 \(stationName) 了"
+            content.body = reminder.title.isEmpty ? "已进入提醒范围" : reminder.title
             content.categoryIdentifier = "ALTERNATIVE_REMINDER_CATEGORY"
         } else {
-            content.title = reminder.placeName
-            content.body = reminder.title
+            content.title = "到站提醒 · \(stationName)"
+            content.body = reminder.title.isEmpty ? "已进入提醒范围，请准备下车" : reminder.title
             content.categoryIdentifier = "REMINDER_CATEGORY"
         }
-        content.sound = .default
+        content.sound = arrivalSound()
+        // 时间敏感通知：无声穿透「专注模式」，不需要任何特殊审批（Critical Alerts 才需要）。
+        content.interruptionLevel = .timeSensitive
+        content.threadIdentifier = "arrival-alerts"
         content.userInfo = [
             "REMINDER_ID": reminder.id.uuidString,
             "LATITUDE": alternativeCoordinate?.latitude ?? reminder.latitude,
@@ -60,6 +74,20 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
         let delay = SettingsStore.shared.isQuiet() ? secondsUntilQuietHoursEnd() : 1
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, delay), repeats: false)
         center.add(UNNotificationRequest(identifier: "\(reminder.id)-\(Date().timeIntervalSince1970)", content: content, trigger: trigger))
+
+        announceArrival(stationName: stationName, reminder: reminder, deferred: delay)
+    }
+
+    /// 语音播报。前台：铃声 + 人声；后台/锁屏：只补人声（铃声已经由系统通知响过）。
+    private func announceArrival(stationName: String, reminder: Reminder, deferred: TimeInterval) {
+        // 免打扰时段里通知被推迟了，声音也跟着推迟，否则等于绕过用户设的安静时间
+        guard deferred < 2 else { return }
+        let extra = reminder.title.isEmpty ? nil : reminder.title
+        if UIApplication.shared.applicationState == .active {
+            AlarmPlaybackService.shared.announceArrival(stationName: stationName, extraSentence: extra)
+        } else {
+            AlarmPlaybackService.shared.speak(AlarmPlaybackService.arrivalSentence(stationName: stationName, extra: extra))
+        }
     }
 
     nonisolated public func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
@@ -76,6 +104,7 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
                   let reminder = ReminderStore.shared.fetchReminder(withId: id) else { return }
             switch response.actionIdentifier {
             case "DONE_ACTION":
+                AlarmPlaybackService.shared.stop()
                 reminder.markDone()
                 GeofenceManager.shared.stop(reminder: reminder)
             case "WAIT_ORIGINAL_ACTION":
@@ -96,9 +125,12 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
 
     private func scheduleSnooze(_ reminder: Reminder) {
         let content = UNMutableNotificationContent()
-        content.title = reminder.placeName
-        content.body = reminder.title
-        content.sound = .default
+        let stationName = reminder.placeName.isEmpty ? reminder.title : reminder.placeName
+        content.title = "到站提醒 · \(stationName)"
+        content.body = reminder.title.isEmpty ? "稍后提醒" : reminder.title
+        content.sound = arrivalSound()
+        content.interruptionLevel = .timeSensitive
+        content.threadIdentifier = "arrival-alerts"
         content.categoryIdentifier = "REMINDER_CATEGORY"
         content.userInfo = ["REMINDER_ID": reminder.id.uuidString, "LATITUDE": reminder.latitude, "LONGITUDE": reminder.longitude]
         center.add(UNNotificationRequest(identifier: "\(reminder.id)-snooze", content: content,

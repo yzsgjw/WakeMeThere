@@ -235,7 +235,7 @@ struct AlightingTripView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center) {
                 Text("路线")
-                    .font(Typeface.title)
+                    .font(NearNoteStyle.Typeface.title)
                     .foregroundStyle(NearNoteStyle.textPrimary)
                 Spacer(minLength: 8)
                 Menu {
@@ -251,7 +251,7 @@ struct AlightingTripView: View {
                         Image(systemName: travelMode.symbol)
                             .font(.system(size: 11, weight: .semibold))
                         Text(travelMode.label)
-                            .font(Typeface.label)
+                            .font(NearNoteStyle.Typeface.label)
                     }
                     .foregroundStyle(NearNoteStyle.accent)
                     .padding(.horizontal, 10)
@@ -317,11 +317,11 @@ struct AlightingTripView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(routeRemaining.map { $0.distanceText } ?? plan.totalText)
-                    .font(Typeface.label)
+                    .font(NearNoteStyle.Typeface.label)
                     .foregroundStyle(NearNoteStyle.textSecondary)
                 Spacer()
                 Text("\(Int((routeProgressClamped * 100).rounded()))%")
-                    .font(Typeface.label.monospacedDigit())
+                    .font(NearNoteStyle.Typeface.label.monospacedDigit())
                     .foregroundStyle(NearNoteStyle.textPrimary)
             }
             GeometryReader { geo in
@@ -344,7 +344,7 @@ struct AlightingTripView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(routeError == nil ? NearNoteStyle.textTertiary : NearNoteStyle.accent)
             Text(routeError ?? (isTracking ? "正在规划路线…" : "开始追踪后自动规划路线，进度按道路计算"))
-                .font(Typeface.label)
+                .font(NearNoteStyle.Typeface.label)
                 .foregroundStyle(NearNoteStyle.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }

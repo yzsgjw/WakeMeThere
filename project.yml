@@ -1,7 +1,26 @@
 name: NearNote
+
 options:
-  bundleIdPrefix: com.mosaab.NearNote
+  bundleIdPrefix: com.wayzs999
   createSharedSchemes: true
+  deploymentTarget:
+    iOS: "17.0"
+  groupSortPosition: top
+
+# -----------------------------------------------------------------------------
+# 说明（改这个文件前先读）：
+#
+# 1. 本项目刻意不使用任何需要 provisioning profile 特殊授权的能力：
+#    - 没有 iCloud / CloudKit
+#    - 没有 App Group
+#    - 没有 Push
+#    - 没有 Critical Alerts
+#    这样 CI 出的未签名 ipa 可以直接交给第三方签名服务重签。
+#
+# 2. Widget 扩展（NearNoteWidget/）暂时不参与构建。要恢复的话把它加回
+#    targets 并重新引入 App Group——第三方签名服务通常签不过带 App Group 的包。
+# -----------------------------------------------------------------------------
+
 targets:
   NearNote:
     type: application
@@ -10,41 +29,23 @@ targets:
     sources:
       - path: NearNote
     settings:
-      INFOPLIST_FILE: NearNote/Info.plist
-      CODE_SIGN_ENTITLEMENTS: NearNote/NearNote.entitlements
-      PRODUCT_BUNDLE_IDENTIFIER: com.mosaab.NearNote
-      DEVELOPMENT_TEAM: 7877JLKPRQ
-      INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
-      MARKETING_VERSION: "1.0"
-      CURRENT_PROJECT_VERSION: "1"
-      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-      GOOGLE_PLACES_API_KEY: ""
-      NEARNOTE_TELEMETRY_ENDPOINT: ""
-      NEARNOTE_FEEDBACK_ENDPOINT: ""
-      NEARNOTE_PRIVACY_URL: "https://joevenner.github.io/nearnotes/privacy"
-      NEARNOTE_SUPPORT_URL: "https://joevenner.github.io/nearnotes/support"
-    dependencies:
-      - target: NearNoteWidget
-  NearNoteWidget:
-    type: app-extension
-    platform: iOS
-    deploymentTarget: "17.0"
-    sources:
-      - path: NearNoteWidget
-      - path: NearNote/Models
-      - path: NearNote/Services/ReminderStore.swift
-    settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.mosaab.NearNote.NearNoteWidget
-      DEVELOPMENT_TEAM: 7877JLKPRQ
-      CODE_SIGN_ENTITLEMENTS: NearNoteWidget/NearNoteWidget.entitlements
-      MARKETING_VERSION: "1.0"
-      CURRENT_PROJECT_VERSION: "1"
-    info:
-      path: NearNoteWidget/Info.plist
-      properties:
-        CFBundleDisplayName: NearNotes Widgets
-        NSExtension:
-          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+      base:
+        INFOPLIST_FILE: NearNote/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.wayzs999.arrival
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.navigation
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.0"
+        ENABLE_BITCODE: NO
+        # 以下运行时配置留空即可；留空时 App 自动走 Apple MapKit / 关闭遥测
+        GOOGLE_PLACES_API_KEY: ""
+        NEARNOTE_TELEMETRY_ENDPOINT: ""
+        NEARNOTE_FEEDBACK_ENDPOINT: ""
+        NEARNOTE_PRIVACY_URL: ""
+        NEARNOTE_SUPPORT_URL: ""
+
   NearNoteTests:
     type: bundle.unit-test
     platform: iOS
@@ -54,15 +55,15 @@ targets:
     dependencies:
       - target: NearNote
     settings:
-      GENERATE_INFOPLIST_FILE: YES
-      PRODUCT_BUNDLE_IDENTIFIER: com.mosaab.NearNoteTests
-      DEVELOPMENT_TEAM: 7877JLKPRQ
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.wayzs999.arrivalTests
+
 schemes:
   NearNote:
     build:
       targets:
         NearNote: all
-        NearNoteWidget: all
     run:
       config: Debug
     test:

@@ -14,7 +14,7 @@ public final class ReminderStore: ObservableObject {
     private init() {
         do {
             let schema = Schema([Reminder.self, SavedPlace.self])
-            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false, groupContainer: .identifier("group.com.mosaab.NearNote"), cloudKitDatabase: .automatic)
+            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false, groupContainer: .none, cloudKitDatabase: .none)
             let container = try ModelContainer(for: schema, configurations: [config])
             self.container = container
             self.context = container.mainContext
@@ -29,7 +29,7 @@ public final class ReminderStore: ObservableObject {
     public init(inMemory: Bool) {
         do {
             let schema = Schema([Reminder.self, SavedPlace.self])
-            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inMemory, groupContainer: .identifier("group.com.mosaab.NearNote"), cloudKitDatabase: .automatic)
+            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inMemory, groupContainer: .none, cloudKitDatabase: .none)
             let container = try ModelContainer(for: schema, configurations: [config])
             self.container = container
             self.context = container.mainContext

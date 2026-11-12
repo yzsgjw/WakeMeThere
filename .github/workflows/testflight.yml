@@ -1,0 +1,140 @@
+name: Upload to TestFlight
+
+# 手动触发。需要 Apple Developer Program（付费账号）与以下仓库 Secrets：
+#   APPLE_TEAM_ID                  —— 开发者账号 Team ID（10 位，如 A1B2C3D4E5）
+#   APP_STORE_CONNECT_KEY_ID       —— App Store Connect API Key 的 Key ID
+#   APP_STORE_CONNECT_ISSUER_ID    —— Issuer ID（App Store Connect → 用户与访问 → 集成）
+#   APP_STORE_CONNECT_KEY_P8_BASE64—— .p8 私钥文件的 Base64（macOS: base64 -i AuthKey_xxx.p8 | pbcopy）
+#
+# 一次配置，之后每次点一下按钮，手机 TestFlight 自动收到新版本，全程不需要 Mac。
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Build number（留空则用 run number）"
+        required: false
+        default: ""
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Archive & upload to TestFlight
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify secrets are configured
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8_BASE64 }}
+        run: |
+          missing=""
+          if [ -z "$TEAM_ID" ];   then missing="$missing APPLE_TEAM_ID"; fi
+          if [ -z "$KEY_ID" ];    then missing="$missing APP_STORE_CONNECT_KEY_ID"; fi
+          if [ -z "$ISSUER_ID" ]; then missing="$missing APP_STORE_CONNECT_ISSUER_ID"; fi
+          if [ -z "$KEY_P8" ];    then missing="$missing APP_STORE_CONNECT_KEY_P8_BASE64"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::缺少 secrets:$missing —— 请先在仓库 Settings → Secrets and variables → Actions 里配置。"
+            exit 1
+          fi
+          echo "secrets OK"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen 2>/dev/null || brew upgrade xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+
+      - name: Write API key
+        env:
+          KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8_BASE64 }}
+        run: |
+          mkdir -p private_keys
+          printf '%s' "$KEY_P8" | openssl base64 -d -A > private_keys/AuthKey.p8
+          chmod 600 private_keys/AuthKey.p8
+
+      - name: Archive
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -o pipefail
+          BUILD_NUMBER="${{ github.event.inputs.build_number }}"
+          if [ -z "$BUILD_NUMBER" ]; then BUILD_NUMBER="${{ github.run_number }}"; fi
+          xcodebuild archive \
+            -project NearNote.xcodeproj \
+            -scheme NearNote \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/NearNote.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath private_keys/AuthKey.p8 \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID" \
+            -quiet \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            2>&1 | tee archive.log
+
+      - name: Export and upload
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          cat > ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>destination</key>
+            <string>upload</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+            -archivePath build/NearNote.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath private_keys/AuthKey.p8 \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID"
+
+      - name: Clean up key
+        if: always()
+        run: rm -rf private_keys
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-logs-${{ github.run_number }}
+          path: |
+            archive.log
+            ExportOptions.plist
+          retention-days: 14
+          if-no-files-found: ignore

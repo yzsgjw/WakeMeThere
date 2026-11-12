@@ -13,7 +13,7 @@
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundleDisplayName</key>
-	<string>NearNotes</string>
+	<string>到站提醒</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
@@ -32,16 +32,21 @@
 	<string>$(NEARNOTE_SUPPORT_URL)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>location</string>
+	</array>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>NearNotes uses your location to show nearby reminders, search for places, and set up reminders on the map.</string>
+	<string>用于在你附近显示待办、搜索地点、在地图上选点设置提醒。</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>NearNotes requires background location access to trigger your alerts when you arrive or leave a selected place, even when the app is closed or in the background. NearNotes never tracks your continuous location.</string>
+	<string>需要在后台获取位置，才能在你接近或离开设定地点时提醒你，即使 App 已关闭或退到后台。本 App 不会持续追踪你的位置。</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>NearNotes requires background location access to trigger your alerts when you arrive or leave a selected place, even when the app is closed or in the background.</string>
+	<string>需要在后台获取位置，才能在你接近或离开设定地点时提醒你，即使 App 已关闭或退到后台。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

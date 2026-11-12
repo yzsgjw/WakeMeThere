@@ -1,0 +1,113 @@
+name: iOS Build (unsigned ipa)
+
+# 产出未签名 ipa。用途：交给第三方签名服务（企业证书平台）重签后安装到 iPhone。
+# 同一条流水线也是唯一的「编译验证」通道——本地没有 macOS，代码能不能过编译只能看这里。
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "site/**"
+      - "**.md"
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build unsigned IPA
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcode-select -p
+          sw_vers
+
+      - name: Install XcodeGen
+        run: |
+          brew install xcodegen 2>/dev/null || brew upgrade xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+
+      - name: Build (code signing disabled)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project NearNote.xcodeproj \
+            -scheme NearNote \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            -quiet \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_ENTITLEMENTS="" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            2>&1 | tee build.log
+
+      - name: Package unsigned IPA
+        id: package
+        run: |
+          set -euo pipefail
+          APP_DIR=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n 1)
+          if [ -z "$APP_DIR" ]; then
+            echo "::error::没有找到 .app 产物，构建未产出可打包内容"
+            exit 1
+          fi
+          echo "app: $APP_DIR"
+
+          SHORT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_DIR/Info.plist")
+          BUILD_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_DIR/Info.plist")
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_DIR/Info.plist")
+          echo "bundle: $BUNDLE_ID  version: $SHORT_VERSION ($BUILD_VERSION)"
+
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP_DIR" Payload/
+          rm -f NearNote-unsigned.ipa
+          zip -qry NearNote-unsigned.ipa Payload
+
+          SIZE=$(du -h NearNote-unsigned.ipa | cut -f1)
+          {
+            echo "## 未签名 ipa 已生成"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| Bundle ID | \`$BUNDLE_ID\` |"
+            echo "| 版本 | $SHORT_VERSION ($BUILD_VERSION) |"
+            echo "| 体积 | $SIZE |"
+            echo "| 提交 | \`${{ github.sha }}\` |"
+            echo ""
+            echo "下载下方 artifact，上传到企业签名平台重签后安装。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "version=$SHORT_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NearNote-unsigned-${{ github.run_number }}
+          path: NearNote-unsigned.ipa
+          retention-days: 30
+          if-no-files-found: error
+
+      # 编译失败时把日志一并留下，方便直接定位报错
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.run_number }}
+          path: build.log
+          retention-days: 14
+          if-no-files-found: ignore

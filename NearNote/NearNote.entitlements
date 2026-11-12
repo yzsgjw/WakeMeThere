@@ -1,18 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  刻意留空。
+
+  原项目在这里声明了 iCloud/CloudKit 与 App Group：
+    com.apple.developer.icloud-container-identifiers  = iCloud.com.mosaab.NearNote
+    com.apple.developer.icloud-services              = CloudKit
+    com.apple.security.application-groups            = group.com.mosaab.NearNote
+
+  这两种能力都要求 provisioning profile 里有对应授权，第三方签名服务
+  基本无法签过，因此全部移除。存储改为纯本地 SwiftData（见 ReminderStore.swift）。
+  仅当以后改用自有开发者账号 + TestFlight 时，才考虑重新引入。
+-->
 <plist version="1.0">
-<dict>
-	<key>com.apple.developer.icloud-container-identifiers</key>
-	<array>
-		<string>iCloud.com.mosaab.NearNote</string>
-	</array>
-	<key>com.apple.developer.icloud-services</key>
-	<array>
-		<string>CloudKit</string>
-	</array>
-	<key>com.apple.security.application-groups</key>
-	<array>
-		<string>group.com.mosaab.NearNote</string>
-	</array>
-</dict>
+<dict/>
 </plist>

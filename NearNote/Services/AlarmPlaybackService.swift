@@ -86,6 +86,7 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
         }
 
         cancelCurrent()
+        AudioKeepAliveService.shared.pauseForAnnouncement()
 
         pendingSpeech = trimmed.isEmpty ? nil : trimmed
         chimePlayed = false
@@ -114,6 +115,7 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
         guard isVoiceEnabled, !trimmed.isEmpty else { return }
 
         cancelCurrent()
+        AudioKeepAliveService.shared.pauseForAnnouncement()
         pendingSpeech = trimmed
         chimePlayed = true
         isAnnouncing = true
@@ -246,6 +248,8 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
         isAnnouncing = false
         deactivateSession()
         endBackgroundExecution()
+        // 播报期间的音频让路结束，把静音保活接回来（没在保活时是空操作）
+        AudioKeepAliveService.shared.resumeAfterAnnouncement()
     }
 }
 

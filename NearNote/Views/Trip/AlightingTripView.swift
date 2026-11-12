@@ -518,6 +518,8 @@ struct AlightingTripView: View {
         stationIDsRaw = plan.map { $0.id.uuidString }.joined(separator: ",")
         activeStopID = first.id
         isTracking = true
+        // 静音保活：追踪期间让 App 不被挂起，围栏触发时才有机会跑语音与灵动岛接力
+        AudioKeepAliveService.shared.startIfNeeded()
 
         Task {
             if locationService.authorizationStatus == .notDetermined {
@@ -540,6 +542,7 @@ struct AlightingTripView: View {
     private func stopTracking() {
         isTracking = false
         activeStopID = nil
+        AudioKeepAliveService.shared.stop()
         Task { await liveActivity.end() }
     }
 

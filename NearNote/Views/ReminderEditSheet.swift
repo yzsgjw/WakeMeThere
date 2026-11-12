@@ -69,14 +69,14 @@ struct ReminderComposerView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("What do you want to remember?", text: $title, axis: .vertical)
+                    TextField("要提醒什么？", text: $title, axis: .vertical)
                         .font(.title2.weight(.semibold))
                         .lineLimit(2...4)
                         .focused($titleFocused)
                         .submitLabel(.next)
                         .padding(.vertical, 8)
                 } header: {
-                    Text("Reminder")
+                    Text("提醒")
                 }
 
                 placeSection
@@ -93,15 +93,15 @@ struct ReminderComposerView: View {
             .background(NearNoteBackground())
             .tint(NearNoteStyle.accent)
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle(reminder == nil ? "New Reminder" : "Edit Reminder")
+            .navigationTitle(reminder == nil ? "新建提醒" : "编辑提醒")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(NearNoteStyle.canvas.opacity(0.94), for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("取消") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", action: save)
+                    Button("保存", action: save)
                         .fontWeight(.semibold)
                         .disabled(!canSave)
                 }
@@ -118,7 +118,7 @@ struct ReminderComposerView: View {
         Section {
             if let place = selectedPlace {
                 SelectedPlaceRow(place: place)
-                Button("Choose a different place") {
+                Button("换个地点") {
                     withAnimation { selectedPlace = nil }
                 }
             } else {
@@ -127,8 +127,8 @@ struct ReminderComposerView: View {
                 } label: {
                     ComposerDestinationRow(
                         symbol: "magnifyingglass",
-                        title: "Search for a place",
-                        subtitle: "Businesses, landmarks, and addresses"
+                        title: "搜索地点",
+                        subtitle: "商户、地标、地址"
                     )
                 }
 
@@ -147,8 +147,8 @@ struct ReminderComposerView: View {
                 } label: {
                     ComposerDestinationRow(
                         symbol: "link",
-                        title: "Paste a map link",
-                        subtitle: "Apple Maps, Google Maps, or Waze"
+                        title: "粘贴地图链接",
+                        subtitle: "Apple 地图、Google 地图、Waze"
                     )
                 }
 
@@ -157,51 +157,51 @@ struct ReminderComposerView: View {
                 } label: {
                     ComposerDestinationRow(
                         symbol: "clock.arrow.circlepath",
-                        title: "Recent and saved places",
-                        subtitle: "Home, work, and places you’ve used"
+                        title: "最近和收藏的地点",
+                        subtitle: "家、公司，以及你用过的地点"
                     )
                 }
             }
         } header: {
-            Text("Place")
+            Text("地点")
         } footer: {
             if selectedPlace == nil {
-                Text("Choose where this reminder should appear.")
+                Text("选一个要提醒的地点。")
             }
         }
     }
 
     private func triggerSection(for place: Place) -> some View {
         Section {
-            Picker("When", selection: $triggerOnArrival) {
-                Text("Arriving").tag(true)
-                Text("Leaving").tag(false)
+            Picker("时间", selection: $triggerOnArrival) {
+                Text("进入范围时").tag(true)
+                Text("离开范围时").tag(false)
             }
             .pickerStyle(.segmented)
             .padding(.vertical, 4)
 
-            Picker("Notify me", selection: $triggerMode) {
-                Text("Only at this place").tag(ReminderTriggerMode.specificPlace)
+            Picker("触发方式", selection: $triggerMode) {
+                Text("只在这个地点").tag(ReminderTriggerMode.specificPlace)
                 if place.category != nil {
-                    Text("At any similar place").tag(ReminderTriggerMode.similarCategory)
+                    Text("附近任意同类地点").tag(ReminderTriggerMode.similarCategory)
                 }
             }
             .pickerStyle(.inline)
             .labelsHidden()
         } header: {
-            Text("Notify me")
+            Text("触发方式")
         } footer: {
             if triggerMode == .similarCategory, let category = place.category {
-                Text("NearNotes can also remind you at another nearby \(category.title.lowercased()).")
+                Text("也可以在附近的同类地点提醒你。")
             } else {
-                Text("This reminder will only appear near \(place.name).")
+                Text("这条提醒只在 \(place.name) 附近出现。")
             }
         }
     }
 
     private var radiusSection: some View {
         Section {
-            Picker("Distance", selection: $radiusMode) {
+            Picker("距离", selection: $radiusMode) {
                 ForEach(RadiusMode.allCases) { mode in
                     Text(mode.title).tag(mode)
                 }
@@ -209,46 +209,46 @@ struct ReminderComposerView: View {
 
             if radiusMode == .custom {
                 VStack(alignment: .leading, spacing: 12) {
-                    LabeledContent("Custom distance", value: customRadiusLabel)
+                    LabeledContent("自定义距离", value: customRadiusLabel)
                     Slider(value: $customRadius, in: 50...2_000, step: 50)
                         .tint(NearNoteStyle.accent)
                 }
                 .padding(.vertical, 6)
             }
         } header: {
-            Text("Arrival radius")
+            Text("到站半径")
         } footer: {
             Text(radiusMode == .automatic
-                 ? "Automatic uses a reliable distance for this location while keeping battery use low."
-                 : "NearNotes uses Apple’s battery-efficient region monitoring, not continuous tracking.")
+                 ? "自动模式会按这个地点挑一个稳妥的距离，同时尽量省电。"
+                 : "用的是系统区域围栏，不做持续定位，耗电低。")
         }
     }
 
     private var repeatSection: some View {
         Section {
-            Picker("Repeat", selection: $isOneTime) {
-                Text("One Time").tag(true)
-                Text("Recurring").tag(false)
+            Picker("重复", selection: $isOneTime) {
+                Text("一次性").tag(true)
+                Text("可重复").tag(false)
             }
         } footer: {
             Text(isOneTime
-                 ? "Completing this reminder moves it to Done."
-                 : "After completing a recurring reminder, you can resume it from the Reminders tab.")
+                 ? "完成后这条提醒会移到「已完成」。"
+                 : "可重复的提醒完成后，可以在「提醒」页把它恢复。")
         }
     }
 
     private var timeSection: some View {
         Section {
-            Toggle("Time constraints", isOn: $hasTimeConstraints)
+            Toggle("时间限制", isOn: $hasTimeConstraints)
             
             if hasTimeConstraints {
-                DatePicker("Start time", selection: $startTime, displayedComponents: .hourAndMinute)
-                DatePicker("End time", selection: $endTime, displayedComponents: .hourAndMinute)
+                DatePicker("开始时间", selection: $startTime, displayedComponents: .hourAndMinute)
+                DatePicker("结束时间", selection: $endTime, displayedComponents: .hourAndMinute)
             }
         } header: {
-            Text("Time Window")
+            Text("时间窗")
         } footer: {
-            Text(hasTimeConstraints ? "The reminder will only trigger between these times." : "The reminder will trigger at any time of day.")
+            Text(hasTimeConstraints ? "只在这个时间段内触发提醒。" : "全天任意时间都可能触发。")
         }
     }
 
@@ -371,7 +371,7 @@ private struct PlaceSearchPickerView: View {
             if service.isSearching {
                 HStack(spacing: 12) {
                     ProgressView()
-                    Text("Searching nearby…")
+                    Text("正在搜索附近…")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -385,12 +385,12 @@ private struct PlaceSearchPickerView: View {
                 .buttonStyle(.plain)
             }
             if let error = service.errorMessage, !query.isEmpty {
-                ContentUnavailableView("Search unavailable", systemImage: "magnifyingglass", description: Text(error))
+                ContentUnavailableView("搜索不可用", systemImage: "magnifyingglass", description: Text(error))
             }
         }
-        .navigationTitle("Search Places")
+        .navigationTitle("搜索地点")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $query, prompt: "Place or address")
+        .searchable(text: $query, prompt: "地点或地址")
         .onChange(of: query) { _, value in
             service.search(query: value, near: locationService.currentLocation?.coordinate)
         }
@@ -429,34 +429,34 @@ private struct LinkPlacePickerView: View {
     var body: some View {
         Form {
             Section {
-                TextField("Paste map link", text: $link, axis: .vertical)
+                TextField("粘贴地图链接", text: $link, axis: .vertical)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
                     .lineLimit(3...6)
             } footer: {
-                Text("NearNotes reads full Apple Maps, Google Maps, and Waze links on your device.")
+                Text("Apple 地图、Google 地图、Waze 的链接都在本机解析。")
             }
 
             Section {
                 Button(action: parse) {
                     if isResolving {
-                        HStack { ProgressView(); Text("Opening Link…") }
+                        HStack { ProgressView(); Text("正在打开链接…") }
                             .frame(maxWidth: .infinity)
                     } else {
-                        Text("Use This Link").frame(maxWidth: .infinity)
+                        Text("使用这个链接").frame(maxWidth: .infinity)
                     }
                 }
                 .fontWeight(.semibold)
                 .disabled(isResolving || link.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
-        .navigationTitle("Paste a Map Link")
+        .navigationTitle("粘贴地图链接")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Can’t Read This Link", isPresented: Binding(
+        .alert("读不出这个链接", isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
         )) {
-            Button("OK", role: .cancel) { }
+            Button("好", role: .cancel) { }
         } message: {
             Text(message ?? "")
         }
@@ -473,14 +473,14 @@ private struct LinkPlacePickerView: View {
             if LinkResolverService.extractURL(from: link) != nil {
                 resolveOnline()
             } else {
-                message = "No location was found. Paste a valid Apple Maps, Google Maps, or Waze link."
+                message = "没找到位置。请粘贴有效的 Apple 地图、Google 地图或 Waze 链接。"
             }
         }
     }
 
     private func resolveOnline() {
         guard let url = LinkResolverService.extractURL(from: link) else {
-            message = "No valid link was found."
+            message = "链接里没有可用的位置。"
             return
         }
         isResolving = true
@@ -493,7 +493,7 @@ private struct LinkPlacePickerView: View {
             } catch {
                 TelemetryService.shared.track(.mapLinkFailed, properties: ["provider": url.host ?? "unknown"])
                 message = (error as? LocalizedError)?.errorDescription
-                    ?? "This link could not be opened. Try again or search for the place manually."
+                    ?? "打不开这个链接，可以重试，或直接搜索地点。"
             }
         }
     }
@@ -510,10 +510,10 @@ private struct SavedPlacePickerView: View {
             .filter { $0.type != .recent }
             .map { (label: $0.displayLabel, place: $0.asPlace) }
         if let home = settings.homePlace, !values.contains(where: { $0.label.caseInsensitiveCompare("Home") == .orderedSame }) {
-            values.insert(("Home", home), at: 0)
+            values.insert(("家", home), at: 0)
         }
         if let work = settings.workPlace, !values.contains(where: { $0.label.caseInsensitiveCompare("Work") == .orderedSame }) {
-            values.insert(("Work", work), at: min(1, values.count))
+            values.insert(("公司", work), at: min(1, values.count))
         }
         values.append(contentsOf: settings.recentPlaces.map { ($0.name, $0) })
         return values
@@ -523,9 +523,9 @@ private struct SavedPlacePickerView: View {
         List {
             if places.isEmpty {
                 ContentUnavailableView(
-                    "No Saved Places",
+                    "还没有收藏地点",
                     systemImage: "mappin.slash",
-                    description: Text("Places you use will appear here.")
+                    description: Text("用过的地点会出现在这里。")
                 )
             } else {
                 ForEach(Array(places.enumerated()), id: \.offset) { _, item in
@@ -549,7 +549,7 @@ private struct SavedPlacePickerView: View {
                 }
             }
         }
-        .navigationTitle("Saved Places")
+        .navigationTitle("收藏地点")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

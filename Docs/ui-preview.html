@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>到站提醒 · 界面预览</title>
+<style>
+  :root{
+    --accent:#3B7DFF;
+    --accent-deep:#2C64E8;
+    --canvas:#0A1017;
+    --surface:#131A24;
+    --raised:#1B2330;
+    --surface2:#222C3A;
+    --hairline:rgba(255,255,255,.075);
+    --hairline-strong:rgba(255,255,255,.14);
+    --t1:#F4F7FB;
+    --t2:#93A1B4;
+    --t3:#64748B;
+    --r-card:22px;
+    --r-control:14px;
+    --r-button:18px;
+    --gutter:20px;
+    --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Noto Sans SC",sans-serif;
+    --round:ui-rounded,"SF Pro Rounded",-apple-system,"PingFang SC",sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  html,body{margin:0;background:#07090C;color:var(--t1);font-family:var(--ui)}
+  .page{max-width:1500px;margin:0 auto;padding:56px 32px 80px}
+  .head{margin-bottom:44px}
+  .head h1{font-size:26px;letter-spacing:-.02em;margin:0 0 10px;font-weight:600}
+  .head p{margin:0;color:var(--t3);font-size:13.5px;line-height:1.7}
+  .head code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--t2);font-size:12.5px}
+  .row{display:flex;gap:44px;flex-wrap:wrap;align-items:flex-start}
+  .item{width:430px}
+  .cap{margin-top:14px;font-size:12px;color:var(--t3);line-height:1.6}
+  .cap b{color:var(--t2);font-weight:500}
+
+  /* ---------- 手机外壳 ---------- */
+  .phone{
+    position:relative;width:430px;height:932px;border-radius:54px;
+    background:var(--canvas);overflow:hidden;
+    border:1px solid rgba(255,255,255,.09);
+    box-shadow:0 40px 90px -30px rgba(0,0,0,.9), 0 0 0 8px #0d0f12, 0 0 0 9px rgba(255,255,255,.05);
+    isolation:isolate;
+  }
+  /* 背景：单一冷光 + 底部压暗（对应 NearNoteBackground） */
+  .bg{position:absolute;inset:0;z-index:0;
+    background:
+      radial-gradient(120% 80% at 82% 2%, rgba(59,125,255,.22) 0%, rgba(59,125,255,.06) 34%, transparent 62%),
+      linear-gradient(180deg, #0B1119 0%, #080C12 48%, #05070A 100%);
+  }
+  .statusbar{position:relative;z-index:3;display:flex;justify-content:space-between;align-items:center;
+    height:54px;padding:0 30px 0 34px;font-size:14px;font-weight:600;letter-spacing:.01em}
+  .statusbar .icons{display:flex;gap:5px;align-items:center;opacity:.9}
+  .bar{width:17px;height:11px;border:1.2px solid var(--t1);border-radius:3px;position:relative}
+  .bar::after{content:"";position:absolute;inset:1.6px;right:5px;background:var(--t1);border-radius:1px}
+  .island{
+    position:absolute;top:11px;left:50%;transform:translateX(-50%);
+    width:126px;height:36px;border-radius:20px;background:#000;z-index:6;
+    display:flex;align-items:center;justify-content:space-between;padding:0 12px;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .island .di-dist{font-family:var(--round);font-size:13px;font-weight:700;letter-spacing:-.02em;color:var(--t1)}
+  .island .di-eta{font-size:10.5px;color:var(--t2)}
+  .island .cam{width:9px;height:9px;border-radius:50%;background:#0d1420;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+
+  .screen{position:relative;z-index:2;display:flex;flex-direction:column;height:calc(100% - 54px);padding:0 var(--gutter);overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
+  .screen::-webkit-scrollbar{display:none}
+
+  /* ---------- 顶部条 ---------- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 2px 0}
+  .brand{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--t2);font-weight:500}
+  .brand .dot{width:22px;height:22px;border-radius:7px;background:linear-gradient(160deg,var(--accent),var(--accent-deep));
+    display:grid;place-items:center;font-size:11px;font-weight:700;color:#fff;font-family:var(--round)}
+  .pill-live{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#BBD1FF;
+    background:rgba(59,125,255,.16);border:1px solid rgba(59,125,255,.34);
+    padding:5px 10px;border-radius:999px;font-weight:600}
+  .pill-live .beat{width:6px;height:6px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 0 0 rgba(59,125,255,.7);animation:beat 2.2s infinite}
+  @keyframes beat{0%{box-shadow:0 0 0 0 rgba(59,125,255,.55)}70%{box-shadow:0 0 0 7px rgba(59,125,255,0)}100%{box-shadow:0 0 0 0 rgba(59,125,255,0)}}
+  .pill-idle{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--t2);
+    background:var(--raised);border:1px solid var(--hairline);padding:5px 10px;border-radius:999px;font-weight:500}
+
+  /* ---------- hero ---------- */
+  .hero{padding:30px 2px 4px;text-align:center}
+  .hero .to{font-size:13px;color:var(--t2);letter-spacing:.02em;margin-bottom:8px}
+  .hero .num{font-family:var(--round);font-weight:800;letter-spacing:-.045em;line-height:.92;
+    font-size:84px;display:flex;align-items:baseline;justify-content:center;gap:6px}
+  .hero .num span{font-size:30px;font-weight:700;letter-spacing:-.01em;color:var(--t2);transform:translateY(-4px)}
+  .hero .station{margin-top:14px;font-size:19px;font-weight:600;letter-spacing:-.01em}
+  .hero .sub{margin-top:7px;font-size:12.5px;color:var(--t3)}
+  .progress{margin:22px 2px 0;height:3px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+  .progress i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent-deep),var(--accent))}
+
+  /* ---------- 数据带（一张卡内三条，用竖线分隔，不套小卡） ---------- */
+  .strip{margin-top:24px;display:grid;grid-template-columns:1fr 1fr 1fr;
+    background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-card);
+    padding:16px 0;position:relative}
+  .strip::after{content:"";position:absolute;left:0;right:0;top:-1px;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(59,125,255,.35),transparent)}
+  .cell{text-align:center;position:relative}
+  .cell+.cell::before{content:"";position:absolute;left:0;top:2px;bottom:2px;width:1px;background:var(--hairline)}
+  .cell .v{font-family:var(--round);font-size:21px;font-weight:700;letter-spacing:-.02em;
+    display:flex;align-items:baseline;justify-content:center;gap:3px}
+  .cell .v em{font-style:normal;font-size:12.5px;font-weight:600;color:var(--t2)}
+  .cell .k{margin-top:5px;font-size:11.5px;color:var(--t3)}
+
+  /* ---------- section 标题 ---------- */
+  .sh{display:flex;align-items:center;justify-content:space-between;margin:26px 2px 12px}
+  .sh .t{font-size:13px;font-weight:600;color:var(--t2);letter-spacing:.02em}
+  .sh .a{font-size:12px;color:var(--accent)}
+
+  /* ---------- 半径 chips ---------- */
+  .chips{display:flex;gap:8px}
+  .chip{flex:1;text-align:center;padding:11px 0;border-radius:var(--r-control);
+    background:var(--raised);border:1px solid var(--hairline);color:var(--t2);
+    font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums}
+  .chip.on{background:rgba(59,125,255,.16);border-color:rgba(59,125,255,.45);color:#D8E5FF}
+
+  /* ---------- 站点队列 ---------- */
+  .queue{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-card);overflow:hidden}
+  .stop{display:flex;align-items:center;gap:13px;padding:15px 16px;position:relative}
+  .stop+.stop::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--hairline)}
+  .stop.current{background:rgba(59,125,255,.07)}
+  .idx{width:28px;height:28px;border-radius:9px;background:var(--raised);border:1px solid var(--hairline);
+    display:grid;place-items:center;font-family:var(--round);font-size:12.5px;font-weight:700;color:var(--t2);flex:none}
+  .stop.current .idx{background:var(--accent);border-color:transparent;color:#fff}
+  .stop.done .idx{background:transparent;color:var(--t3)}
+  .stop .info{min-width:0;flex:1}
+  .stop .nm{font-size:16px;font-weight:500;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stop.done .nm{color:var(--t3);text-decoration:line-through;text-decoration-color:rgba(255,255,255,.2)}
+  .stop .ad{font-size:11.5px;color:var(--t3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tags{display:flex;gap:6px;margin-top:7px}
+  .tag{font-size:10.5px;padding:3px 7px;border-radius:6px;background:var(--surface2);color:var(--t2);
+    display:inline-flex;align-items:center;gap:4px}
+  .tag.accent{background:rgba(59,125,255,.18);color:#CFE0FF}
+  .chev{color:var(--t3);font-size:12px}
+
+  /* ---------- 权限卡 ---------- */
+  .perm{display:flex;gap:12px;align-items:center;margin-top:14px;padding:14px 15px;border-radius:var(--r-card);
+    background:rgba(255,176,32,.08);border:1px solid rgba(255,176,32,.22)}
+  .perm .ic{width:32px;height:32px;border-radius:10px;background:rgba(255,176,32,.16);display:grid;place-items:center;font-size:14px}
+  .perm .tx{flex:1;font-size:12px;color:#FFD79A;line-height:1.5}
+  .perm .go{font-size:12px;font-weight:700;color:#FFC65C;padding:7px 11px;border-radius:9px;background:rgba(255,176,32,.16)}
+
+  /* ---------- 底部固定 CTA ---------- */
+  .cta-wrap{margin-top:auto;padding:14px 0 26px}
+  .cta{height:56px;border-radius:var(--r-button);display:flex;align-items:center;justify-content:center;gap:8px;
+    font-size:17px;font-weight:600;letter-spacing:-.01em}
+  .cta.primary{background:linear-gradient(180deg,var(--accent),var(--accent-deep));color:#fff;
+    box-shadow:0 12px 30px -14px rgba(59,125,255,.9)}
+  .cta.secondary{background:var(--raised);color:var(--t1);border:1px solid var(--hairline-strong)}
+  .homebar{width:134px;height:5px;border-radius:3px;background:rgba(255,255,255,.28);margin:8px auto 0}
+
+  /* ---------- 地图选点屏 ---------- */
+  .map{position:absolute;inset:0;z-index:0;overflow:hidden;background:#0C1218}
+  .map svg{width:100%;height:100%;display:block}
+  .maphint{position:relative;z-index:4;margin:6px auto 0;width:max-content;font-size:11.5px;color:var(--t2);
+    background:rgba(27,35,48,.92);border:1px solid var(--hairline);padding:7px 12px;border-radius:999px;
+    backdrop-filter:blur(8px)}
+  .pickcard{position:relative;z-index:4;margin-top:auto;margin-bottom:18px;padding:16px;
+    background:rgba(19,26,36,.94);border:1px solid var(--hairline);border-radius:var(--r-card);
+    backdrop-filter:blur(14px);box-shadow:0 -20px 60px -30px #000}
+  .pickrow{display:flex;gap:12px;align-items:flex-start}
+  .pickrow .nm{font-size:16px;font-weight:600;letter-spacing:-.01em}
+  .pickrow .ad{font-size:12.5px;color:var(--t2);margin-top:4px;line-height:1.45}
+  .star{margin-left:auto;text-align:center;color:var(--accent);font-size:10.5px;line-height:1.35;flex:none}
+  .star .s{font-size:21px}
+  .metarow{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+  .favs{display:flex;gap:8px;margin-top:12px;overflow:hidden}
+  .fav{font-size:11px;color:var(--t1);background:var(--surface2);padding:7px 11px;border-radius:999px;
+    white-space:nowrap;display:flex;gap:5px;align-items:center;border:1px solid var(--hairline)}
+
+  /* ---------- 灵动岛特写 ---------- */
+  .isl-wrap{display:flex;flex-direction:column;gap:18px}
+  .isl{width:430px;background:#000;border-radius:52px;overflow:hidden;border:1px solid rgba(255,255,255,.09);
+    box-shadow:0 30px 70px -34px #000}
+  .isl.compact{height:126px}
+  .isl.expanded{height:300px}
+  .isl .zone{display:flex;align-items:center;justify-content:space-between;padding:16px 26px 0;height:66px}
+  .isl .lz{display:flex;align-items:center;gap:8px}
+  .isl .rz{text-align:right}
+  .isl .dist{font-family:var(--round);font-size:24px;font-weight:800;letter-spacing:-.03em}
+  .isl .dist small{font-size:11px;font-weight:700;color:var(--t2);margin-left:2px}
+  .isl .eta{font-size:12.5px;color:#CFE0FF;font-weight:600}
+  .isl .dest{font-size:10.5px;color:var(--t3);margin-top:2px}
+  .isl .pill{display:flex;align-items:center;justify-content:center;width:126px;height:36px;margin:0 auto;
+    border-radius:20px;background:#05070A;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);
+    font-size:11.5px;color:var(--t3)}
+  .isl .foot{display:flex;align-items:center;gap:12px;padding:0 24px;margin-top:26px}
+  .ring{width:26px;height:26px;border-radius:50%;flex:none;
+    background:conic-gradient(var(--accent) 0 62%, rgba(255,255,255,.1) 62% 100%);
+    -webkit-mask:radial-gradient(circle, transparent 57%, #000 58%);
+            mask:radial-gradient(circle, transparent 57%, #000 58%)}
+  .isl .foot .nm{font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .isl .foot .st{font-size:11px;color:var(--t3);margin-top:2px}
+  .isl .bar2{margin:16px 24px 0;height:3px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden}
+  .isl .bar2 i{display:block;height:100%;width:62%;background:linear-gradient(90deg,var(--accent-deep),var(--accent))}
+  .lockscreen{width:430px;height:250px;border-radius:28px;padding:18px;
+    background:radial-gradient(120% 130% at 20% 0%, rgba(59,125,255,.18), transparent 60%), #0F161F;
+    border:1px solid var(--hairline);display:flex;flex-direction:column;justify-content:space-between}
+  .lockscreen .top{display:flex;align-items:center;gap:12px}
+  .lockscreen .nm{font-size:17px;font-weight:700;letter-spacing:-.01em}
+  .lockscreen .st{font-size:11.5px;color:var(--t2);margin-top:3px}
+  .lockscreen .big{font-family:var(--round);font-size:26px;font-weight:800;letter-spacing:-.03em}
+  .lockscreen .big small{font-size:12px;color:var(--t2);margin-left:3px}
+  .lockscreen .eta{font-size:12px;color:#CFE0FF;margin-top:6px}
+  .ok{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#9FE6B4;
+    background:rgba(80,220,130,.12);border:1px solid rgba(80,220,130,.28);padding:5px 9px;border-radius:999px}
+  .note{max-width:1500px;margin:52px auto 0;padding:0 32px;color:var(--t3);font-size:12.5px;line-height:1.85}
+  .note b{color:var(--t2);font-weight:500}
+  .note ul{margin:10px 0 0;padding-left:18px}
+  .note li{margin-bottom:6px}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="head">
+    <h1>到站提醒 · 界面预览</h1>
+    <p>用 HTML 按 1:1 还原 SwiftUI 里的实际数值：强调色 <code>#3B7DFF</code>、画布 <code>#0A1017</code>、卡片 <code>#131A24</code>、圆角 <code>22 / 14 / 18</code>、数字一律 SF Rounded。不是设计稿，是照着代码里那份 <code>NearNoteStyle</code> 抄的。</p>
+  </div>
+
+  <div class="row">
+    <!-- ============ 1. 追踪中 ============ -->
+    <div class="item">
+      <div class="phone">
+        <div class="bg"></div>
+
+        <!-- 灵动岛（展开态右上角不是全宽，这里只做紧凑信息） -->
+        <div class="island">
+          <div class="di-dist">860 m</div>
+          <div class="cam"></div>
+          <div class="di-eta">12 分</div>
+        </div>
+
+        <div class="statusbar">
+          <div>17:08</div>
+          <div class="icons">
+            <span style="font-size:11px">●●●</span>
+            <div class="bar"></div>
+          </div>
+        </div>
+
+        <div class="screen">
+          <div class="topbar">
+            <div class="brand"><span class="dot">到</span>到站提醒</div>
+            <div class="pill-live"><span class="beat"></span>追踪中</div>
+          </div>
+
+          <div class="hero">
+            <div class="to">距离下一站</div>
+            <div class="num">860<span>m</span></div>
+            <div class="station">人民广场站</div>
+            <div class="sub">第 2 / 3 站 · 提醒范围 300 m</div>
+          </div>
+
+          <div class="progress"><i style="width:62%"></i></div>
+
+          <div class="strip">
+            <div class="cell"><div class="v">12<em>分钟</em></div><div class="k">预计到达</div></div>
+            <div class="cell"><div class="v">2<em>站</em></div><div class="k">剩余</div></div>
+            <div class="cell"><div class="v">300<em>m</em></div><div class="k">提醒半径</div></div>
+          </div>
+
+          <div class="sh"><div class="t">提醒距离</div><div class="a">改后立即生效</div></div>
+          <div class="chips">
+            <div class="chip">200</div>
+            <div class="chip on">300</div>
+            <div class="chip">500</div>
+            <div class="chip">1 km</div>
+            <div class="chip">2 km</div>
+          </div>
+
+          <div class="sh"><div class="t">站点队列</div><div class="a">3 站</div></div>
+          <div class="queue">
+            <div class="stop done">
+              <div class="idx">✓</div>
+              <div class="info"><div class="nm">静安寺站</div><div class="ad">南京西路 1686 号</div></div>
+              <div class="chev">›</div>
+            </div>
+            <div class="stop current">
+              <div class="idx">2</div>
+              <div class="info">
+                <div class="nm">人民广场站</div>
+                <div class="ad">西藏中路 120 号</div>
+                <div class="tags"><span class="tag accent">当前</span><span class="tag">半径 300 m</span></div>
+              </div>
+              <div class="chev">›</div>
+            </div>
+            <div class="stop">
+              <div class="idx">3</div>
+              <div class="info">
+                <div class="nm">陆家嘴站</div>
+                <div class="ad">世纪大道 1 号</div>
+                <div class="tags"><span class="tag">终点</span></div>
+              </div>
+              <div class="chev">›</div>
+            </div>
+          </div>
+
+          <div class="perm">
+            <div class="ic">📍</div>
+            <div class="tx">「始终允许」没开，锁屏后可能收不到提醒</div>
+            <div class="go">去设置</div>
+          </div>
+
+          <div class="cta-wrap">
+            <div class="cta secondary">停止追踪</div>
+            <div class="homebar"></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap"><b>行程主页 · 追踪中</b><br>大号距离是唯一主角；数字下方三个指标挤在同一张卡里，用 1px 竖线分隔，不套小卡片。</div>
+    </div>
+
+    <!-- ============ 2. 地图选点 ============ -->
+    <div class="item">
+      <div class="phone">
+        <div class="map">
+          <svg viewBox="0 0 430 932" preserveAspectRatio="xMidYMid slice">
+            <defs>
+              <linearGradient id="water" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#0B1A24"/><stop offset="1" stop-color="#0A141C"/>
+              </linearGradient>
+            </defs>
+            <rect width="430" height="932" fill="#0C1319"/>
+            <!-- 水域 -->
+            <path d="M280 -20 C330 100 280 190 330 280 C370 360 330 470 360 560 L470 560 L470 -20 Z" fill="url(#water)"/>
+            <!-- 街区块 -->
+            <g fill="#111A22">
+              <rect x="18" y="150" width="86" height="66" rx="6"/>
+              <rect x="120" y="150" width="102" height="66" rx="6"/>
+              <rect x="18" y="238" width="86" height="92" rx="6"/>
+              <rect x="120" y="238" width="102" height="92" rx="6"/>
+              <rect x="18" y="352" width="86" height="78" rx="6"/>
+              <rect x="120" y="352" width="102" height="78" rx="6"/>
+              <rect x="18" y="452" width="86" height="110" rx="6"/>
+              <rect x="120" y="452" width="102" height="110" rx="6"/>
+              <rect x="18" y="584" width="188" height="120" rx="6"/>
+            </g>
+            <!-- 道路 -->
+            <g stroke="#1E2A38" stroke-width="9" stroke-linecap="round">
+              <path d="M-10 216 H400"/>
+              <path d="M-10 340 H400"/>
+              <path d="M-10 440 H400"/>
+              <path d="M-10 572 H400"/>
+              <path d="M110 -10 V700"/>
+              <path d="M232 -10 V460"/>
+            </g>
+            <g stroke="#233243" stroke-width="4.5" stroke-linecap="round">
+              <path d="M-10 128 H300"/>
+              <path d="M-10 700 H400"/>
+              <path d="M-10 262 H300"/>
+            </g>
+            <!-- 高亮主路 -->
+            <path d="M-10 216 H400" stroke="#2F4A6E" stroke-width="3"/>
+            <!-- 半径圈 -->
+            <circle cx="215" cy="360" r="104" fill="rgba(59,125,255,.14)" stroke="#3B7DFF" stroke-width="1.6"/>
+            <circle cx="215" cy="360" r="104" fill="none" stroke="rgba(59,125,255,.35)" stroke-width="1" stroke-dasharray="3 5"/>
+            <!-- 钉子 -->
+            <g transform="translate(215 360)">
+              <circle r="15" fill="#0A1017"/>
+              <circle r="13" fill="#3B7DFF"/>
+              <circle r="4.6" fill="#fff"/>
+              <path d="M0 13 L-6 24 L6 24 Z" fill="#3B7DFF"/>
+            </g>
+          </svg>
+        </div>
+
+        <div class="statusbar">
+          <div>17:08</div>
+          <div class="icons"><span style="font-size:11px">●●●</span><div class="bar"></div></div>
+        </div>
+
+        <div class="screen" style="pointer-events:none;overflow:hidden">
+          <div class="maphint">拖动地图，把圆圈对准站点</div>
+
+          <div class="pickcard">
+            <div class="pickrow">
+              <div style="min-width:0">
+                <div class="nm">人民广场站</div>
+                <div class="ad">黄浦区 西藏中路 人民大道</div>
+              </div>
+              <div class="star"><div class="s">★</div>收藏</div>
+            </div>
+            <div class="metarow">
+              <span class="tag accent">提醒半径 300 m</span>
+              <span class="tag">31.23041, 121.47370</span>
+            </div>
+            <div class="favs">
+              <div class="fav">★ 公司楼下</div>
+              <div class="fav">🏠 家</div>
+              <div class="fav">★ 虹桥火车站</div>
+            </div>
+            <div style="margin-top:14px" class="cta primary">用此位置</div>
+          </div>
+          <div class="homebar" style="margin-bottom:6px"></div>
+        </div>
+      </div>
+      <div class="cap"><b>地图选点</b><br>中心即选中点，圆圈就是提醒范围。以前只靠搜索，公交站、路口这类地方搜不准；现在拖到哪算哪，点完顺手收藏。</div>
+    </div>
+
+    <!-- ============ 3. 未开始 + 灵动岛 ============ -->
+    <div class="item">
+      <div class="phone">
+        <div class="bg"></div>
+        <div class="island">
+          <div class="di-dist">2.4 km</div>
+          <div class="cam"></div>
+          <div class="di-eta">18 分</div>
+        </div>
+        <div class="statusbar">
+          <div>17:08</div>
+          <div class="icons"><span style="font-size:11px">●●●</span><div class="bar"></div></div>
+        </div>
+        <div class="screen">
+          <div class="topbar">
+            <div class="brand"><span class="dot">到</span>到站提醒</div>
+            <div class="pill-idle">未开始</div>
+          </div>
+
+          <div class="hero">
+            <div class="to">距离最近的一站</div>
+            <div class="num">2.4<span>km</span></div>
+            <div class="station">静安寺站</div>
+            <div class="sub">共 3 站 · 到站前会响铃并语音播报</div>
+          </div>
+
+          <div class="strip">
+            <div class="cell"><div class="v">18<em>分钟</em></div><div class="k">预计到达</div></div>
+            <div class="cell"><div class="v">3<em>站</em></div><div class="k">全部站点</div></div>
+            <div class="cell"><div class="v">500<em>m</em></div><div class="k">默认半径</div></div>
+          </div>
+
+          <div class="sh"><div class="t">站点队列</div><div class="a">＋ 添加</div></div>
+          <div class="queue">
+            <div class="stop current">
+              <div class="idx">1</div>
+              <div class="info">
+                <div class="nm">静安寺站</div>
+                <div class="ad">南京西路 1686 号</div>
+                <div class="tags"><span class="tag accent">最近</span><span class="tag">半径 500 m</span></div>
+              </div>
+              <div class="chev">›</div>
+            </div>
+            <div class="stop">
+              <div class="idx">2</div>
+              <div class="info"><div class="nm">人民广场站</div><div class="ad">西藏中路 120 号</div></div>
+              <div class="chev">›</div>
+            </div>
+            <div class="stop">
+              <div class="idx">3</div>
+              <div class="info"><div class="nm">陆家嘴站</div><div class="ad">世纪大道 1 号</div></div>
+              <div class="chev">›</div>
+            </div>
+          </div>
+
+          <div class="cta-wrap">
+            <div class="cta primary">开始追踪</div>
+            <div class="homebar"></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap"><b>行程主页 · 未开始</b><br>同一套版式换个状态：没有进度条，队列按距离排，主按钮变实心。</div>
+    </div>
+  </div>
+
+  <!-- ============ 灵动岛 / 锁屏 ============ -->
+  <div class="row" style="margin-top:56px">
+    <div class="item" style="width:auto">
+      <div class="isl-wrap">
+        <div class="isl compact">
+          <div class="zone">
+            <div class="lz">
+              <div class="dist">860<small>m</small></div>
+            </div>
+            <div class="pill">下一站</div>
+            <div class="rz">
+              <div class="eta">12 分</div>
+              <div class="dest">人民广场站</div>
+            </div>
+          </div>
+        </div>
+        <div class="isl expanded">
+          <div class="zone">
+            <div class="lz"><div class="dist">860<small>m</small></div></div>
+            <div class="pill">下一站</div>
+            <div class="rz"><div class="eta">12 分</div><div class="dest">人民广场站</div></div>
+          </div>
+          <div class="foot">
+            <div class="ring"></div>
+            <div>
+              <div class="nm">人民广场站</div>
+              <div class="st">第 2 / 3 站 · 即将到站</div>
+            </div>
+            <div style="margin-left:auto" class="tag accent">300 m</div>
+          </div>
+          <div class="bar2"><i></i></div>
+        </div>
+        <div class="lockscreen">
+          <div class="top">
+            <div class="ring" style="width:40px;height:40px"></div>
+            <div>
+              <div style="font-size:11px;color:var(--t3);letter-spacing:.06em">下一站 · 第 2 / 3 站</div>
+              <div class="nm">人民广场站</div>
+            </div>
+            <div class="ok" style="margin-left:auto">即将到站</div>
+          </div>
+          <div>
+            <div class="big">860<small>m</small></div>
+            <div class="eta">约 12 分钟 · 到站前 300 m 提醒</div>
+          </div>
+          <div class="bar2" style="margin:0;height:3px"><i></i></div>
+        </div>
+      </div>
+      <div class="cap" style="max-width:430px"><b>灵动岛 · 紧凑 / 展开 / 锁屏卡片</b><br>同一份 ContentState 驱动三处：距离、ETA、站名、进度。切站时只更新数据不重建，站名是滚动替换而不是闪一下。</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>怎么核对风格</b>
+    <ul>
+      <li>全屏只有一个强调色（<code>#3B7DFF</code>），没有第二个彩色到处跑；分类靠图标区分，不靠彩虹色。</li>
+      <li>数字全用圆体 + tabular，跳数时不抖；单位小一号、灰一档，用来衬托数字而不是抢戏。</li>
+      <li>一张卡片里不套小卡片：指标用 1px 竖线切三段，收藏用胶囊标签。</li>
+      <li>圆角只有三档：卡片 22 / 控件 14 / 按钮 18；按钮统一 56 高，拇指够得着。</li>
+      <li>颜色都压在深底上，靠透明度分层（surface 13% → raised 19% → secondary 22%），没有一块是纯黑。</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

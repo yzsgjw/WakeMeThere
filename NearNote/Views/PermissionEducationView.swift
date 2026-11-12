@@ -17,10 +17,10 @@ struct PermissionEducationView: View {
                             .scaledToFit()
                             .frame(width: 132, height: 132)
                             .accessibilityHidden(true)
-                        Text("Alerts that respect your battery")
+                        Text("到站才响，不耗电")
                             .font(.title.bold())
                             .multilineTextAlignment(.center)
-                        Text("NearNotes asks only for access needed to show your reminders at the right place.")
+                        Text("只申请必要的权限：在你到站的那一刻把提醒送到。")
                             .font(.body)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -30,33 +30,33 @@ struct PermissionEducationView: View {
                     .listRowInsets(EdgeInsets(top: 18, leading: 20, bottom: 22, trailing: 20))
                 }
 
-                Section("Access") {
+                Section("权限") {
                     PermissionRow(
                         symbol: "bell.fill",
-                        title: "Notifications",
-                        detail: "Shows your reminder with Done, Later, and Directions actions.",
+                        title: "通知",
+                        detail: "到站时弹出提醒，可以直接「已完成」「稍后」「导航」。",
                         isReady: notificationService.isAuthorized,
-                        actionTitle: "Allow Notifications"
+                        actionTitle: "允许通知"
                     ) {
                         notificationService.requestPermission()
                     }
 
                     PermissionRow(
                         symbol: "location.fill",
-                        title: "Location While Using",
-                        detail: "Sorts nearby reminders and helps you choose places.",
+                        title: "使用期间的定位",
+                        detail: "用来判断离站点还有多远，也帮你在地图上选点。",
                         isReady: hasForegroundLocation,
-                        actionTitle: "Allow Location"
+                        actionTitle: "允许定位"
                     ) {
                         locationService.requestWhenInUsePermission()
                     }
 
                     PermissionRow(
                         symbol: "location.badge.checkmark",
-                        title: "Background Alerts",
-                        detail: "Lets iOS detect arrivals when NearNotes is closed—without continuous tracking.",
+                        title: "后台提醒",
+                        detail: "App 退到后台或没开着，系统也能判断你是否进站，不需要一直定位。",
                         isReady: locationService.authorizationStatus == .authorizedAlways,
-                        actionTitle: "Enable Background Alerts"
+                        actionTitle: "开启后台提醒"
                     ) {
                         locationService.requestAlwaysPermission()
                     }
@@ -64,26 +64,26 @@ struct PermissionEducationView: View {
 
                 if locationService.authorizationStatus == .denied {
                     Section {
-                        Button("Open iOS Settings", systemImage: "gear") {
+                        Button("打开系统设置", systemImage: "gear") {
                             guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
                             UIApplication.shared.open(url)
                         }
                     } footer: {
-                        Text("Location access was previously declined. You can change it in Settings.")
+                        Text("定位之前被拒绝过，需要到系统设置里改。")
                     }
                 }
 
                 Section {
-                    Label("Location is processed on this device and is never used to build a history.", systemImage: "lock.fill")
+                    Label("位置只在这台设备上处理，不会攒成历史轨迹。", systemImage: "lock.fill")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("Location & Alerts")
+            .navigationTitle("定位与提醒")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("完成") { dismiss() }
                 }
             }
         }
@@ -110,7 +110,7 @@ private struct PermissionRow: View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: isReady ? "checkmark.circle.fill" : symbol)
                 .font(.title3)
-                .foregroundStyle(isReady ? .green : NearNoteStyle.accent)
+                .foregroundStyle(isReady ? NearNoteStyle.accent : NearNoteStyle.textSecondary)
                 .frame(width: 30)
             VStack(alignment: .leading, spacing: 5) {
                 Text(title)

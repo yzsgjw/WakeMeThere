@@ -62,7 +62,7 @@ struct HomeView: View {
                                     RemindersView(onAdd: onAdd)
                                 } label: {
                                     HStack {
-                                        Text("See all reminders")
+                                        Text("查看全部提醒")
                                             .font(.subheadline.weight(.semibold))
                                         Spacer()
                                         Text("\(reminders.count)")
@@ -95,13 +95,13 @@ struct HomeView: View {
                             .frame(width: 38, height: 38)
                             .background(NearNoteStyle.surface, in: Circle())
                     }
-                    .accessibilityLabel("New reminder")
+                    .accessibilityLabel("新建提醒")
                 }
             }
             .sheet(item: $editingReminder) { ReminderComposerView(reminder: $0) }
             .sheet(isPresented: $showPermissions) { PermissionEducationView() }
             .overlay { completionOverlay }
-            .alert("Lock Screen Radar", isPresented: Binding(
+            .alert("锁屏雷达", isPresented: Binding(
                 get: { liveActivityError != nil },
                 set: { if !$0 { liveActivityError = nil } }
             )) {
@@ -121,7 +121,7 @@ struct HomeView: View {
             HStack(spacing: 12) {
                 Image(systemName: locationService.currentLocation == nil ? "location.slash.fill" : "location.fill")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(locationService.currentLocation == nil ? .orange : NearNoteStyle.accent)
+                    .foregroundStyle(locationService.currentLocation == nil ? NearNoteStyle.textTertiary : NearNoteStyle.accent)
                     .frame(width: 30)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(locationService.currentLocation == nil ? "Location is off" : "Near you now")
@@ -147,13 +147,13 @@ struct HomeView: View {
                 .scaledToFit()
                 .frame(width: 190, height: 150)
                 .accessibilityHidden(true)
-            Text("Nothing nearby")
+            Text("附近暂时没有提醒")
                 .font(.title2.bold())
-            Text("Pebble is watching your places.\nNearby reminders will appear here.")
+            Text("正在盯着你的地点。\n附近有提醒时会出现在这里。")
                 .font(.subheadline)
                 .foregroundStyle(NearNoteStyle.secondaryText)
                 .lineSpacing(3)
-            Button("Add Reminder", systemImage: "plus", action: onAdd)
+            Button("添加提醒", systemImage: "plus", action: onAdd)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .padding(.top, 8)
@@ -252,7 +252,7 @@ struct NearbyReminderCard: View {
                 Menu {
                     Button("Complete", systemImage: "checkmark.circle", action: onComplete)
                     Button(
-                        isTrackingOnLockScreen ? "Stop Lock Screen Radar" : "Show on Lock Screen",
+                        isTrackingOnLockScreen ? "关闭锁屏雷达" : "在锁屏显示",
                         systemImage: isTrackingOnLockScreen ? "livephoto.slash" : "livephoto",
                         action: onToggleLockScreen
                     )
@@ -279,7 +279,7 @@ struct NearbyReminderCard: View {
     }
 
     private var triggerLabel: String {
-        reminder.triggerMode == .similarCategory ? "Any nearby \(reminder.category?.title.lowercased() ?? "similar place")" : "On arrival"
+        reminder.triggerMode == .similarCategory ? "附近任意同类地点" : "到站时"
     }
 }
 
@@ -299,23 +299,25 @@ struct RemindersView: View {
                 NearNoteBackground()
                 if reminders.isEmpty {
                     ContentUnavailableView {
-                        Label("No reminders yet", systemImage: "checklist")
+                        Label("还没有提醒", systemImage: "checklist")
                     } description: {
-                        Text("Create a reminder for a place that matters.")
+                        Text("给一个重要的地点加一条提醒。")
                     } actions: {
-                        Button("Add Reminder", systemImage: "plus", action: onAdd)
+                        Button("添加提醒", systemImage: "plus", action: onAdd)
                             .buttonStyle(.borderedProminent)
                     }
                 } else {
                     List {
-                        if !active.isEmpty { reminderSection("Active", reminders: active) }
-                        if !completed.isEmpty { reminderSection("Completed", reminders: completed) }
-                        if !archived.isEmpty { reminderSection("Archived", reminders: archived) }
+                        if !active.isEmpty { reminderSection("进行中", reminders: active) }
+                        if !completed.isEmpty { reminderSection("已完成", reminders: completed) }
+                        if !archived.isEmpty { reminderSection("已归档", reminders: archived) }
                     }
                     .scrollContentBackground(.hidden)
+                    .listStyle(.insetGrouped)
+                    .listRowSeparatorTint(NearNoteStyle.hairline)
                 }
             }
-            .navigationTitle("Reminders")
+            .navigationTitle("提醒")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: onAdd) { Image(systemName: "plus") }
@@ -344,16 +346,16 @@ struct RemindersView: View {
                     .buttonStyle(.plain)
                     Menu {
                         if reminder.isCompleted || reminder.isArchived {
-                            Button("Resume", systemImage: "arrow.counterclockwise") { resume(reminder) }
+                            Button("恢复", systemImage: "arrow.counterclockwise") { resume(reminder) }
                         } else {
-                            Button("Mark as Done", systemImage: "checkmark.circle") { complete(reminder) }
+                            Button("标记完成", systemImage: "checkmark.circle") { complete(reminder) }
                         }
                         if reminder.isArchived {
-                            Button("Restore from Archive", systemImage: "tray.and.arrow.up") { restore(reminder) }
+                            Button("从归档恢复", systemImage: "tray.and.arrow.up") { restore(reminder) }
                         } else {
-                            Button("Archive", systemImage: "archivebox") { archive(reminder) }
+                            Button("归档", systemImage: "archivebox") { archive(reminder) }
                         }
-                        Button("Edit", systemImage: "pencil") { selected = reminder }
+                        Button("编辑", systemImage: "pencil") { selected = reminder }
                     } label: {
                         Image(systemName: "ellipsis")
                             .frame(width: 34, height: 34)
@@ -364,32 +366,32 @@ struct RemindersView: View {
                 .padding(.vertical, 4)
                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
                     if reminder.isCompleted || reminder.isArchived {
-                        Button("Resume", systemImage: "arrow.counterclockwise") { resume(reminder) }
-                            .tint(.green)
+                        Button("恢复", systemImage: "arrow.counterclockwise") { resume(reminder) }
+                            .tint(NearNoteStyle.accent)
                     } else {
-                        Button("Done", systemImage: "checkmark") { complete(reminder) }
-                            .tint(.green)
+                        Button("完成", systemImage: "checkmark") { complete(reminder) }
+                            .tint(NearNoteStyle.accent)
                     }
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     if reminder.isArchived {
-                        Button("Restore", systemImage: "tray.and.arrow.up") { restore(reminder) }
+                        Button("恢复", systemImage: "tray.and.arrow.up") { restore(reminder) }
                             .tint(NearNoteStyle.accent)
                     } else {
-                        Button("Archive", systemImage: "archivebox") { archive(reminder) }
-                            .tint(.orange)
+                        Button("归档", systemImage: "archivebox") { archive(reminder) }
+                            .tint(NearNoteStyle.accentDeep)
                     }
                 }
                 .contextMenu {
                     if reminder.isCompleted || reminder.isArchived {
-                        Button("Resume", systemImage: "arrow.counterclockwise") { resume(reminder) }
+                        Button("恢复", systemImage: "arrow.counterclockwise") { resume(reminder) }
                     } else {
-                        Button("Mark as Done", systemImage: "checkmark.circle") { complete(reminder) }
+                        Button("标记完成", systemImage: "checkmark.circle") { complete(reminder) }
                     }
                     if reminder.isArchived {
-                        Button("Restore from Archive", systemImage: "tray.and.arrow.up") { restore(reminder) }
+                        Button("从归档恢复", systemImage: "tray.and.arrow.up") { restore(reminder) }
                     } else {
-                        Button("Archive", systemImage: "archivebox") { archive(reminder) }
+                        Button("归档", systemImage: "archivebox") { archive(reminder) }
                     }
                 }
             }

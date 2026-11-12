@@ -59,8 +59,8 @@ struct LocationPickerView: View {
                             Image("pebble_searching")
                                 .resizable().scaledToFit().frame(width: 58, height: 58)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("Opening map link…").font(.headline)
-                                Text("Finding the exact place")
+                                Text("正在打开地图链接…").font(.headline)
+                                Text("正在确认具体位置")
                                     .font(.caption).foregroundStyle(NearNoteStyle.secondaryText)
                             }
                         }
@@ -142,8 +142,8 @@ struct LocationPickerView: View {
                 VStack(spacing: 10) {
                     Image("pebble_searching")
                         .resizable().scaledToFit().frame(width: 145, height: 120)
-                    Text("Find somewhere that matters").font(.headline)
-                    Text("Search for a business, address, or paste an Apple Maps, Google Maps, or Waze link.")
+                    Text("找一个重要的地方").font(.headline)
+                    Text("搜商户、地址，或粘贴 Apple 地图、Google 地图、Waze 的链接。")
                         .font(.subheadline)
                         .foregroundStyle(NearNoteStyle.secondaryText)
                         .multilineTextAlignment(.center)

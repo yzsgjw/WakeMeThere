@@ -7,21 +7,21 @@ struct OnboardingView: View {
     private let pages = [
         OnboardingPage(
             image: "onboarding_welcome",
-            title: "Remember things\nwhere they matter.",
-            emphasizedPhrase: "where they matter.",
-            detail: "NearNotes reminds you when you’re actually near the place."
+            title: "把提醒放在\n真正重要的地方。",
+            emphasizedPhrase: "真正重要的地方。",
+            detail: "走进范围才提醒你，而不是到点就响的闹钟。"
         ),
         OnboardingPage(
             image: "onboarding_location",
-            title: "Choose one place\nor any nearby place.",
-            emphasizedPhrase: "nearby place.",
-            detail: "You stay in control. Always."
+            title: "选一个具体地点，\n或者附近任意同类地点。",
+            emphasizedPhrase: "附近任意同类地点。",
+            detail: "多久提醒、提醒多远，全部由你决定。"
         ),
         OnboardingPage(
             image: "onboarding_time",
-            title: "Private.\nBattery-safe.\niCloud synced.",
+            title: "纯本地。\n省电。\n不用注册。",
             emphasizedPhrase: "",
-            detail: "Local-first storage, private iCloud sync, and no location history."
+            detail: "数据只存在这台手机上，不上传，也不留位置历史。"
         )
     ]
 
@@ -46,7 +46,7 @@ struct OnboardingView: View {
                 }
                 .padding(.vertical, 20)
 
-                Button(page == pages.count - 1 ? "Get started" : "Continue") {
+                Button(page == pages.count - 1 ? "开始使用" : "继续") {
                     if page == pages.count - 1 {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         withAnimation { hasSeenOnboarding = true }

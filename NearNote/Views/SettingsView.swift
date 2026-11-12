@@ -24,13 +24,13 @@ struct SettingsView: View {
                     Button { showPermissions = true } label: {
                         SettingsRow(
                             symbol: "bell.badge.fill",
-                            title: "Location & Notifications",
+                            title: "定位与通知",
                             value: permissionSummary
                         )
                     }
                     .foregroundStyle(.primary)
 
-                    Picker("Default radius", selection: Binding(
+                    Picker("默认提醒距离", selection: Binding(
                         get: { settings.radiusMode },
                         set: { settings.radiusMode = $0 }
                     )) {
@@ -41,33 +41,33 @@ struct SettingsView: View {
 
                     if settings.radiusMode == .custom {
                         VStack(alignment: .leading, spacing: 12) {
-                            LabeledContent("Custom radius", value: customRadiusLabel)
+                            LabeledContent("自定义距离", value: customRadiusLabel)
                             Slider(value: $settings.customRadius, in: 50...2_000, step: 50)
                         }
                         .padding(.vertical, 6)
                     }
                 } header: {
-                    Text("Reminders")
+                    Text("提醒")
                 } footer: {
-                    Text("The default radius is used for new reminders. You can change it before saving.")
+                    Text("新建提醒时使用这个默认距离，保存前每一站还能单独改。")
                 }
 
                 Section {
-                    Toggle("Quiet Hours", isOn: $settings.quietHoursEnabled)
+                    Toggle("勿扰时段", isOn: $settings.quietHoursEnabled)
                     if settings.quietHoursEnabled {
-                        DatePicker("From", selection: timeBinding(for: true), displayedComponents: .hourAndMinute)
-                        DatePicker("Until", selection: timeBinding(for: false), displayedComponents: .hourAndMinute)
+                        DatePicker("从", selection: timeBinding(for: true), displayedComponents: .hourAndMinute)
+                        DatePicker("到", selection: timeBinding(for: false), displayedComponents: .hourAndMinute)
                     }
-                    Picker("Repeat alerts", selection: $settings.cooldownMinutes) {
-                        Text("After 15 minutes").tag(15)
-                        Text("After 30 minutes").tag(30)
-                        Text("After 1 hour").tag(60)
+                    Picker("重复提醒", selection: $settings.cooldownMinutes) {
+                        Text("15 分钟后").tag(15)
+                        Text("30 分钟后").tag(30)
+                        Text("1 小时后").tag(60)
                     }
                 } header: {
-                    Text("Notifications")
+                    Text("通知")
                 }
 
-                Section("Saved Places") {
+                Section("收藏地点") {
                     ForEach(Array(savedPlaces.prefix(2))) { place in
                         savedPlaceRow(place)
                     }
@@ -78,21 +78,21 @@ struct SettingsView: View {
                                 savedPlaceRow(place)
                             }
                         } label: {
-                            Text(showAllSavedPlaces ? "Show fewer" : "Show \(savedPlaces.count - 2) more")
+                            Text(showAllSavedPlaces ? "收起" : "再看 \(savedPlaces.count - 2) 个")
                                 .font(.subheadline.weight(.medium))
                         }
                     }
 
                     Button { showAddSavedPlace = true } label: {
-                        Label("Add Saved Place", systemImage: "plus.circle.fill")
+                        Label("添加收藏地点", systemImage: "plus.circle.fill")
                     }
                 }
 
                 Section {
-                    Toggle("Share Anonymous Usage", isOn: $settings.shareAnonymousUsage)
+                    Toggle("分享匿名使用数据", isOn: $settings.shareAnonymousUsage)
                         .disabled(!TelemetryService.shared.isConfigured)
                     if !TelemetryService.shared.isConfigured {
-                        Label("Usage collection is not configured in this build.", systemImage: "info.circle")
+                        Label("本版本未配置用量收集。", systemImage: "info.circle")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -101,38 +101,40 @@ struct SettingsView: View {
                     } label: {
                         SettingsRow(
                             symbol: "lock.shield.fill",
-                            title: "Privacy",
-                            value: "Private iCloud"
+                            title: "隐私",
+                            value: "纯本地"
                         )
                     }
                     if let privacyURL = AppConfiguration.privacyPolicyURL {
                         Link(destination: privacyURL) {
-                            SettingsRow(symbol: "safari.fill", title: "Privacy Policy", value: "Web")
+                            SettingsRow(symbol: "safari.fill", title: "隐私政策", value: "网页")
                         }
                     }
                 } header: {
-                    Text("Privacy & Diagnostics")
+                    Text("隐私与诊断")
                 } footer: {
-                    Text("Optional usage data never includes reminder text, saved places, or coordinates. No diagnostic data is sent unless an endpoint is configured.")
+                    Text("用量数据里不会包含提醒文字、收藏地点或坐标；本版本没有配置任何上报端点，数据不会外发。")
                 }
 
-                Section("Support") {
+                Section("支持") {
                     NavigationLink {
                         FeedbackView()
                     } label: {
-                        SettingsRow(symbol: "exclamationmark.bubble.fill", title: "Report a Problem", value: "")
+                        SettingsRow(symbol: "exclamationmark.bubble.fill", title: "反馈问题", value: "")
                     }
                     if let supportURL = AppConfiguration.supportURL {
                         Link(destination: supportURL) {
-                            SettingsRow(symbol: "questionmark.circle.fill", title: "Support Website", value: "Web")
+                            SettingsRow(symbol: "questionmark.circle.fill", title: "支持网站", value: "网页")
                         }
                     }
                 }
             }
             .scrollContentBackground(.hidden)
+            .listRowBackground(NearNoteStyle.surface)
+            .listRowSeparatorTint(NearNoteStyle.hairline)
             .background(NearNoteBackground())
             .tint(NearNoteStyle.accent)
-            .navigationTitle("Settings")
+            .navigationTitle("设置")
             .sheet(isPresented: $showPermissions) { PermissionEducationView() }
             .sheet(isPresented: $showAddSavedPlace) {
                 SavedPlaceEditor(existing: nil, nextSortOrder: savedPlaces.count)
@@ -153,7 +155,7 @@ struct SettingsView: View {
                 latitude: home.latitude,
                 longitude: home.longitude,
                 type: .custom,
-                label: "Home",
+                label: "家",
                 symbolName: "house.fill",
                 sortOrder: savedPlaces.count
             ))
@@ -165,7 +167,7 @@ struct SettingsView: View {
                 latitude: work.latitude,
                 longitude: work.longitude,
                 type: .custom,
-                label: "Work",
+                label: "公司",
                 symbolName: "briefcase.fill",
                 sortOrder: savedPlaces.count + 1
             ))
@@ -179,7 +181,7 @@ struct SettingsView: View {
         }
         .foregroundStyle(.primary)
         .swipeActions {
-            Button("Delete", systemImage: "trash", role: .destructive) {
+            Button("删除", systemImage: "trash", role: .destructive) {
                 modelContext.delete(place)
                 try? modelContext.save()
             }
@@ -187,7 +189,7 @@ struct SettingsView: View {
     }
 
     private var permissionSummary: String {
-        notificationService.isAuthorized && locationService.authorizationStatus == .authorizedAlways ? "Ready" : "Review"
+        notificationService.isAuthorized && locationService.authorizationStatus == .authorizedAlways ? "已就绪" : "待检查"
     }
 
     private var customRadiusLabel: String {
@@ -225,12 +227,16 @@ private struct SettingsRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(NearNoteStyle.accent)
                 .frame(width: 24)
             Text(title)
-            Spacer()
+                .font(NearNoteStyle.Typeface.body)
+                .foregroundStyle(NearNoteStyle.textPrimary)
+            Spacer(minLength: 8)
             Text(value)
-                .foregroundStyle(.secondary)
+                .font(NearNoteStyle.Typeface.label)
+                .foregroundStyle(NearNoteStyle.textSecondary)
                 .lineLimit(1)
         }
     }
@@ -238,10 +244,10 @@ private struct SettingsRow: View {
 
 private struct PrivacyView: View {
     private let promises = [
-        ("location.slash.fill", "No location history", "NearNotes never builds a timeline of where you’ve been."),
-        ("icloud.fill", "Private iCloud sync", "Reminders and saved places are stored locally and synced through your private iCloud database when available."),
-        ("battery.100percent", "Battery-efficient by design", "Apple region monitoring wakes NearNotes only when needed."),
-        ("hand.raised.fill", "Optional anonymous diagnostics", "Usage sharing is off by default and never includes your reminder text or coordinates.")
+        ("location.slash.fill", "不留位置历史", "不会把你走过的地方拼成一条轨迹。"),
+        ("internaldrive.fill", "纯本地存储", "提醒和收藏地点只存在这台手机上，不上传任何服务器，这一版也已移除 iCloud 同步。"),
+        ("bell.badge.fill", "到站才唤醒", "用系统的区域围栏判断进站，不做持续定位，也不会一直在后台跑。"),
+        ("hand.raised.fill", "诊断默认关闭", "用量分享默认关闭，且永远不会包含提醒文字、地点或坐标。")
     ]
 
     var body: some View {
@@ -251,11 +257,11 @@ private struct PrivacyView: View {
                     .font(.system(size: 54, weight: .medium))
                     .foregroundStyle(.primary)
                     .padding(.top, 34)
-                Text("Your places stay yours")
+                Text("你的地点只属于你")
                     .font(.largeTitle.bold())
                     .multilineTextAlignment(.center)
                     .padding(.top, 20)
-                Text("NearNotes needs no separate account and operates no reminder server. Apple CloudKit privately syncs your data across your devices.")
+                Text("到站提醒不需要注册账号，也没有任何服务器。所有数据留在本机。")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -286,7 +292,7 @@ private struct PrivacyView: View {
             .padding(.bottom, 40)
         }
         .background(NearNoteBackground())
-        .navigationTitle("Privacy")
+        .navigationTitle("隐私")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -318,9 +324,9 @@ private struct SavedPlaceEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Label") {
+                Section("标签") {
                     TextField("Home, Gym, Parents…", text: $label)
-                    Picker("Icon", selection: $icon) {
+                    Picker("图标", selection: $icon) {
                         ForEach(SavedPlaceIcon.allCases) { option in
                             Label(option.title, systemImage: option.rawValue).tag(option)
                         }
@@ -330,13 +336,13 @@ private struct SavedPlaceEditor: View {
                 Section {
                     if let selectedPlace {
                         PlaceResultRowForSettings(place: selectedPlace)
-                        Button("Choose a Different Place") {
+                        Button("换个地点") {
                             self.selectedPlace = nil
                             query = ""
                             linkError = nil
                         }
                     } else {
-                        TextField("Search or paste a map link", text: $query)
+                        TextField("搜索，或粘贴地图链接", text: $query)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                         if isResolvingLink {
@@ -346,9 +352,9 @@ private struct SavedPlaceEditor: View {
                         }
                         if let linkError {
                             VStack(alignment: .leading, spacing: 6) {
-                                Label("Couldn’t open this link", systemImage: "exclamationmark.triangle.fill")
+                                Label("打不开这个链接", systemImage: "exclamationmark.triangle.fill")
                                     .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(NearNoteStyle.textSecondary)
                                 Text(linkError)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -364,14 +370,16 @@ private struct SavedPlaceEditor: View {
                         }
                     }
                 } header: {
-                    Text("Place")
+                    Text("地点")
                 } footer: {
-                    Text("Search normally, or paste a full or shortened Google Maps, Apple Maps, or Waze link.")
+                    Text("可以直接搜，也可以粘贴完整或缩短过的 Apple 地图、Google 地图、Waze 链接。")
                 }
             }
             .scrollContentBackground(.hidden)
+            .listRowBackground(NearNoteStyle.surface)
+            .listRowSeparatorTint(NearNoteStyle.hairline)
             .background(NearNoteBackground())
-            .navigationTitle(existing == nil ? "Add Saved Place" : "Edit Saved Place")
+            .navigationTitle(existing == nil ? "添加收藏地点" : "编辑收藏地点")
             .navigationBarTitleDisplayMode(.inline)
             .onChange(of: query) { _, value in
                 handleQuery(value)
@@ -379,10 +387,10 @@ private struct SavedPlaceEditor: View {
             .onDisappear { resolveTask?.cancel() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("取消") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", action: save)
+                    Button("保存", action: save)
                         .fontWeight(.semibold)
                         .disabled(label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedPlace == nil)
                 }
@@ -414,7 +422,7 @@ private struct SavedPlaceEditor: View {
             } catch {
                 isResolvingLink = false
                 linkError = (error as? LocalizedError)?.errorDescription
-                    ?? "Try again or search for the place manually."
+                    ?? "可以重试，或直接搜索这个地点。"
                 TelemetryService.shared.track(.mapLinkFailed, properties: ["provider": url.host ?? "unknown"])
             }
         }
@@ -457,13 +465,13 @@ private enum SavedPlaceIcon: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .home: "Home"
-        case .work: "Work"
+        case .home: "家"
+        case .work: "公司"
         case .gym: "Gym"
-        case .school: "School"
-        case .family: "Family"
-        case .favorite: "Favorite"
-        case .pin: "Place"
+        case .school: "学校"
+        case .family: "家人"
+        case .favorite: "常去"
+        case .pin: "地点"
         }
     }
 }
@@ -505,15 +513,15 @@ private struct FeedbackView: View {
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
             } header: {
-                Text("Problem")
+                Text("问题描述")
             } footer: {
-                Text("Do not include passwords or sensitive personal information.")
+                Text("不要填写密码或其他敏感信息。")
             }
 
-            Section("Report Details") {
-                Toggle("Include App Diagnostics", isOn: $settings.includeDiagnosticsInReports)
+            Section("报告内容") {
+                Toggle("附上诊断信息", isOn: $settings.includeDiagnosticsInReports)
                 if settings.includeDiagnosticsInReports {
-                    Text("Includes app version, build, iOS version, and device model. It never includes reminders, places, or coordinates.")
+                    Text("包含 App 版本号、构建号、系统版本和机型，不包含提醒、地点或坐标。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -523,7 +531,7 @@ private struct FeedbackView: View {
                 if service.isConfigured {
                     Button(action: submit) {
                         if isSubmitting { ProgressView().frame(maxWidth: .infinity) }
-                        else { Text("Send Report").frame(maxWidth: .infinity) }
+                        else { Text("发送报告").frame(maxWidth: .infinity) }
                     }
                     .disabled(isSubmitting || cleanMessage.isEmpty)
                 }
@@ -533,32 +541,32 @@ private struct FeedbackView: View {
                     contactEmail: contactEmail,
                     includeDiagnostics: settings.includeDiagnosticsInReports
                 )) {
-                    Label(service.isConfigured ? "Share a Copy" : "Share Report", systemImage: "square.and.arrow.up")
+                    Label(service.isConfigured ? "分享一份" : "分享报告", systemImage: "square.and.arrow.up")
                         .frame(maxWidth: .infinity)
                 }
                 .disabled(cleanMessage.isEmpty)
             } footer: {
                 if !service.isConfigured {
-                    Text("Direct delivery is not configured, so iOS will let you share the report using Mail or another app.")
+                    Text("没有配置直接上报，iOS 会让你用邮件或其他 App 把报告发出去。")
                 }
             }
         }
         .scrollContentBackground(.hidden)
         .background(NearNoteBackground())
-        .navigationTitle("Report a Problem")
+        .navigationTitle("反馈问题")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Report Sent", isPresented: $submitted) {
-            Button("Done") { message = "" }
+        .alert("报告已发送", isPresented: $submitted) {
+            Button("好") { message = "" }
         } message: {
-            Text("Thank you. The report was delivered without reminder or location data.")
+            Text("谢谢反馈。报告里没有带提醒或位置数据。")
         }
-        .alert("Couldn’t Send Report", isPresented: Binding(
+        .alert("报告没有发出去", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text(errorMessage ?? "Try sharing the report instead.")
+            Text(errorMessage ?? "可以改成分享一份报告。")
         }
     }
 
@@ -577,7 +585,7 @@ private struct FeedbackView: View {
                 TelemetryService.shared.track(.feedbackSubmitted)
                 submitted = true
             } catch {
-                errorMessage = (error as? LocalizedError)?.errorDescription ?? "Try sharing the report instead."
+                errorMessage = (error as? LocalizedError)?.errorDescription ?? "可以改成分享一份报告。"
             }
         }
     }

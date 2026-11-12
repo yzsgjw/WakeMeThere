@@ -6,12 +6,12 @@ public enum RadiusMode: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
     public var title: String {
         switch self {
-        case .automatic: "Automatic"
+        case .automatic: "自动"
         case .meters100: "100m"
         case .meters250: "250m"
         case .meters500: "500m"
         case .meters1000: "1000m"
-        case .custom: "Custom"
+        case .custom: "自定义"
         }
     }
     public func radius(customRadius: Double = 150) -> Double {

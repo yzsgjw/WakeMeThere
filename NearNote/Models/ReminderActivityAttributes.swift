@@ -9,6 +9,30 @@ import Foundation
 // 多站接力时（阶段 3），下一站会变，但 Live Activity 实例不重建 ——
 // 只更新 state，灵动岛/锁屏上的站名、序号、距离、ETA 就跟着变。
 
+/// 出行方式。放在共享文件里，因为它要进 ContentState（灵动岛/锁屏要显示图标），
+/// 也要被主 App 的 RouteService 映射成 MKDirections 的传输类型。
+public enum TravelMode: String, Codable, Hashable, Sendable, CaseIterable {
+    case automobile
+    case transit
+    case walking
+
+    public var label: String {
+        switch self {
+        case .automobile: return "驾车"
+        case .transit: return "公交"
+        case .walking: return "步行"
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .automobile: return "car.fill"
+        case .transit: return "bus.fill"
+        case .walking: return "figure.walk"
+        }
+    }
+}
+
 public struct ReminderActivityAttributes: ActivityAttributes {
 
     /// 行程阶段。灵动岛配色和文案都按这个分档，不再另设布尔开关。
@@ -48,6 +72,14 @@ public struct ReminderActivityAttributes: ActivityAttributes {
         public var etaMinutes: Int?
         public var phase: Phase
 
+        // MARK: 沿路线进度（MapKit 规划成功时才有值）
+
+        /// 沿道路已行进的比例 0…1。nil = 没有路线，回退到直线距离进度。
+        public var routeProgress: Double?
+        /// 沿道路剩余里程（米）。用来区分"直线还有 800m"和"沿路还有 1.4km"。
+        public var routeRemainingMeters: Double?
+        public var travelMode: TravelMode
+
         public init(
             stationName: String,
             stationIndex: Int,
@@ -58,7 +90,10 @@ public struct ReminderActivityAttributes: ActivityAttributes {
             distanceMeters: Double,
             startDistanceMeters: Double,
             etaMinutes: Int?,
-            phase: Phase
+            phase: Phase,
+            routeProgress: Double? = nil,
+            routeRemainingMeters: Double? = nil,
+            travelMode: TravelMode = .automobile
         ) {
             self.stationName = stationName
             self.stationIndex = stationIndex
@@ -70,6 +105,9 @@ public struct ReminderActivityAttributes: ActivityAttributes {
             self.startDistanceMeters = startDistanceMeters
             self.etaMinutes = etaMinutes
             self.phase = phase
+            self.routeProgress = routeProgress
+            self.routeRemainingMeters = routeRemainingMeters
+            self.travelMode = travelMode
         }
 
         // MARK: 展示用（计算属性，不参与 Codable）
@@ -108,6 +146,27 @@ public struct ReminderActivityAttributes: ActivityAttributes {
             guard startDistanceMeters > 1, distanceMeters.isFinite else { return 0 }
             let raw = 1 - distanceMeters / startDistanceMeters
             return min(1, max(0, raw))
+        }
+
+        /// 有路线用路线进度，没有就用直线估算。地图/灵动岛/锁屏都看这一个值。
+        public var progressValue: Double {
+            if let routeProgress, routeProgress.isFinite {
+                return min(1, max(0, routeProgress))
+            }
+            return progress
+        }
+
+        public var percentText: String {
+            "\(Int((progressValue * 100).rounded()))%"
+        }
+
+        /// 沿路剩余里程；没有路线时退回直线距离文案。
+        public var remainingText: String {
+            guard let routeRemainingMeters, routeRemainingMeters.isFinite else { return distanceText }
+            if routeRemainingMeters < 1_000 {
+                return "\(Int(routeRemainingMeters.rounded())) 米"
+            }
+            return String(format: "%.1f 公里", routeRemainingMeters / 1_000)
         }
     }
 

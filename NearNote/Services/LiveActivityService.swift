@@ -106,6 +106,44 @@ final class LiveActivityService: ObservableObject {
         )
     }
 
+    /// 沿路线进度更新。规划成功后每次定位都可以调，内部照样节流：
+    /// 进度变化不到 0.3% 且分钟数没变就不写，省 iOS 的更新预算。
+    func updateRoute(
+        progress: Double,
+        remainingMeters: Double,
+        remainingMinutes: Int?,
+        mode: TravelMode
+    ) async {
+        guard let activity, var state = currentState else { return }
+
+        let clamped = min(1, max(0, progress))
+        let progressChanged = abs(clamped - (state.routeProgress ?? -1)) >= 0.003
+        let minutesChanged = remainingMinutes != nil && state.etaMinutes != remainingMinutes
+        let modeChanged = state.travelMode != mode
+        guard progressChanged || minutesChanged || modeChanged else { return }
+
+        state.routeProgress = clamped
+        state.routeRemainingMeters = max(0, remainingMeters)
+        state.travelMode = mode
+        if let remainingMinutes { state.etaMinutes = remainingMinutes }
+        currentState = state
+        await activity.update(
+            ActivityContent(state: state, staleDate: Date().addingTimeInterval(10 * 60))
+        )
+    }
+
+    /// 路线规划失败/清空时调用：灵动岛退回直线距离进度，不留一个卡住的百分比。
+    func clearRoute() async {
+        guard let activity, var state = currentState else { return }
+        guard state.routeProgress != nil || state.routeRemainingMeters != nil else { return }
+        state.routeProgress = nil
+        state.routeRemainingMeters = nil
+        currentState = state
+        await activity.update(
+            ActivityContent(state: state, staleDate: Date().addingTimeInterval(30 * 60))
+        )
+    }
+
     func end() async {
         for running in Activity<ReminderActivityAttributes>.activities {
             await running.end(nil, dismissalPolicy: .immediate)
@@ -161,8 +199,15 @@ final class LiveActivityService: ObservableObject {
             distanceMeters: safeDistance,
             startDistanceMeters: max(safeDistance, 1),
             etaMinutes: eta,
-            phase: Self.phase(for: safeDistance, radius: reminder.radius)
+            phase: Self.phase(for: safeDistance, radius: reminder.radius),
+            travelMode: Self.savedTravelMode()
         )
+    }
+
+    /// 行程页把出行方式存在 UserDefaults，这里读一次，灵动岛的图标才跟界面对得上。
+    private static func savedTravelMode() -> TravelMode {
+        let raw = UserDefaults.standard.string(forKey: "trip.travelMode") ?? ""
+        return TravelMode(rawValue: raw) ?? .automobile
     }
 
     private static func phase(

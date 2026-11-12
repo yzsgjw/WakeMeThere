@@ -1,4 +1,6 @@
+import Combine
 import CoreLocation
+import MapKit
 import SwiftData
 import SwiftUI
 import UIKit
@@ -29,6 +31,16 @@ struct AlightingTripView: View {
     @State private var expandedList = false
     @State private var errorMessage: String?
 
+    /// 出行方式：路线规划与灵动岛图标都用它
+    @AppStorage("trip.travelMode") private var travelModeRaw = TravelMode.automobile.rawValue
+    @State private var routePlan: RouteService.RoutePlan?
+    @State private var routeProgress: Double?
+    @State private var routeRemaining: Double?
+    @State private var routeError: String?
+    /// 上一个被采纳的定位，用来丢隧道里的脏点
+    @State private var lastRouteFix: CLLocation?
+    @State private var lastReplanAt = Date.distantPast
+
     private let radiusOptions: [Double] = [200, 300, 500, 1_000, 2_000]
 
     // MARK: - Body
@@ -41,6 +53,7 @@ struct AlightingTripView: View {
                     topBar
                     hero
                     metrics
+                    routeCard
                     radiusControl
                     stopsSection
                     if !hasAlwaysPermission { permissionCard }
@@ -53,6 +66,10 @@ struct AlightingTripView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { ctaBar }
         .task(id: nextStop?.id) { await etaLoop() }
+        .task(id: routeTaskKey) { await planRoute() }
+        .onReceive(locationService.$currentLocation) { location in
+            handleLocation(location)
+        }
         .alert("提示", isPresented: errorAlertBinding) {
             Button("知道了", role: .cancel) { errorMessage = nil }
         } message: {
@@ -197,6 +214,247 @@ struct AlightingTripView: View {
     private var radiusShortLabel: String {
         let radius = nextStop?.radius ?? defaultRadius
         return radius.distanceText
+    }
+
+    // MARK: - 路线卡片（MapKit 原生路线 + 沿路进度）
+
+    private var travelMode: TravelMode {
+        TravelMode(rawValue: travelModeRaw) ?? .automobile
+    }
+
+    /// 下一站 / 出行方式 / 是否追踪 变了才重新规划，避免每次定位都打网络
+    private var routeTaskKey: String {
+        "\(nextStop?.id.uuidString ?? "-")|\(travelModeRaw)|\(isTracking)"
+    }
+
+    private var routeProgressClamped: Double {
+        min(1, max(0, routeProgress ?? 0))
+    }
+
+    private var routeCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                Text("路线")
+                    .font(Typeface.title)
+                    .foregroundStyle(NearNoteStyle.textPrimary)
+                Spacer(minLength: 8)
+                Menu {
+                    ForEach(TravelMode.allCases, id: \.self) { mode in
+                        Button {
+                            travelModeRaw = mode.rawValue
+                        } label: {
+                            Label(mode.label, systemImage: mode.symbol)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: travelMode.symbol)
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(travelMode.label)
+                            .font(Typeface.label)
+                    }
+                    .foregroundStyle(NearNoteStyle.accent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(NearNoteStyle.accentGhost))
+                }
+            }
+
+            if let plan = routePlan {
+                routeMap(plan)
+                routeProgressRow(plan)
+            } else {
+                routePlaceholder
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: NearNoteStyle.cardRadius, style: .continuous)
+                .fill(NearNoteStyle.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: NearNoteStyle.cardRadius, style: .continuous)
+                .stroke(NearNoteStyle.hairline, lineWidth: 1)
+        )
+    }
+
+    private func routeMap(_ plan: RouteService.RoutePlan) -> some View {
+        Map(initialPosition: .region(region(for: plan)), interactionModes: []) {
+            MapPolyline(coordinates: plan.coordinates)
+                .stroke(
+                    NearNoteStyle.accent,
+                    style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
+                )
+
+            if let first = plan.points.first {
+                Annotation("", coordinate: first.coordinate, anchor: .center) {
+                    Circle()
+                        .fill(NearNoteStyle.surface)
+                        .frame(width: 12, height: 12)
+                        .overlay(Circle().stroke(NearNoteStyle.accent, lineWidth: 2.5))
+                }
+            }
+
+            if let last = plan.points.last {
+                Annotation("", coordinate: last.coordinate, anchor: .bottom) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(NearNoteStyle.accent)
+                        .background(Circle().fill(NearNoteStyle.canvas).frame(width: 14, height: 14))
+                }
+            }
+        }
+        .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
+        .frame(height: 168)
+        .clipShape(RoundedRectangle(cornerRadius: NearNoteStyle.controlRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: NearNoteStyle.controlRadius, style: .continuous)
+                .stroke(NearNoteStyle.hairline, lineWidth: 1)
+        )
+    }
+
+    private func routeProgressRow(_ plan: RouteService.RoutePlan) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(routeRemaining.map { $0.distanceText } ?? plan.totalText)
+                    .font(Typeface.label)
+                    .foregroundStyle(NearNoteStyle.textSecondary)
+                Spacer()
+                Text("\(Int((routeProgressClamped * 100).rounded()))%")
+                    .font(Typeface.label.monospacedDigit())
+                    .foregroundStyle(NearNoteStyle.textPrimary)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(NearNoteStyle.hairlineStrong)
+                    Capsule()
+                        .fill(NearNoteStyle.accent)
+                        .frame(width: max(0, geo.size.width * routeProgressClamped))
+                }
+            }
+            .frame(height: 4)
+        }
+    }
+
+    private var routePlaceholder: some View {
+        HStack(spacing: 10) {
+            Image(systemName: routeError == nil
+                  ? "point.topleft.down.curvedto.point.bottomright.up"
+                  : "exclamationmark.triangle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(routeError == nil ? NearNoteStyle.textTertiary : NearNoteStyle.accent)
+            Text(routeError ?? (isTracking ? "正在规划路线…" : "开始追踪后自动规划路线，进度按道路计算"))
+                .font(Typeface.label)
+                .foregroundStyle(NearNoteStyle.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func region(for plan: RouteService.RoutePlan) -> MKCoordinateRegion {
+        let lats = plan.points.map(\.latitude)
+        let lons = plan.points.map(\.longitude)
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else {
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+                span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+            )
+        }
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
+        )
+        let span = MKCoordinateSpan(
+            latitudeDelta: max(0.004, (maxLat - minLat) * 1.8),
+            longitudeDelta: max(0.004, (maxLon - minLon) * 1.8)
+        )
+        return MKCoordinateRegion(center: center, span: span)
+    }
+
+    /// 每次拿到新定位：投影到路线 → 进度/剩余/ETA → 推给灵动岛；偏航就重规划。
+    private func handleLocation(_ location: CLLocation?) {
+        guard isTracking, let location, let plan = routePlan else { return }
+        // 精度太差的点不参与进度计算
+        guard location.horizontalAccuracy >= 0, location.horizontalAccuracy < 120 else { return }
+        // 隧道里定位会瞬间跳到几百米外：单次突变 >150m 且间隔很短 → 视为脏点丢弃
+        if let last = lastRouteFix,
+           location.distance(from: last) > 150,
+           location.timestamp.timeIntervalSince(last.timestamp) < 5 {
+            return
+        }
+        lastRouteFix = location
+
+        guard let projection = RouteService.project(location.coordinate, on: plan) else { return }
+        routeProgress = projection.progress
+        routeRemaining = projection.remainingMeters
+
+        let minutes = RouteService.remainingMinutes(
+            plan: plan,
+            projection: projection,
+            currentSpeed: location.speed >= 0 ? location.speed : nil
+        )
+        if let minutes { routedETA = minutes }
+
+        Task {
+            await liveActivity.updateRoute(
+                progress: projection.progress,
+                remainingMeters: projection.remainingMeters,
+                remainingMinutes: minutes,
+                mode: plan.mode
+            )
+        }
+
+        // 偏航 80m 以上重规划，30 秒内不重复请求
+        if projection.offRouteMeters > 80, Date().timeIntervalSince(lastReplanAt) > 30 {
+            lastReplanAt = Date()
+            Task { await planRoute() }
+        }
+    }
+
+    private func planRoute() async {
+        guard isTracking, let stop = nextStop, let here = locationService.currentLocation else {
+            routePlan = nil
+            routeProgress = nil
+            routeRemaining = nil
+            return
+        }
+
+        let destination = CLLocationCoordinate2D(latitude: stop.latitude, longitude: stop.longitude)
+        do {
+            let plan = try await RouteService.shared.plan(
+                from: here.coordinate,
+                to: destination,
+                mode: travelMode
+            )
+            routePlan = plan
+            routeError = nil
+            lastReplanAt = Date()
+
+            guard let projection = RouteService.project(here.coordinate, on: plan) else { return }
+            routeProgress = projection.progress
+            routeRemaining = projection.remainingMeters
+
+            let minutes = RouteService.remainingMinutes(
+                plan: plan,
+                projection: projection,
+                currentSpeed: here.speed >= 0 ? here.speed : nil
+            )
+            if let minutes { routedETA = minutes }
+            await liveActivity.updateRoute(
+                progress: projection.progress,
+                remainingMeters: projection.remainingMeters,
+                remainingMinutes: minutes,
+                mode: plan.mode
+            )
+        } catch {
+            // 规划失败不影响到站提醒：围栏照旧，界面退回直线距离
+            routePlan = nil
+            routeProgress = nil
+            routeRemaining = nil
+            routeError = error.localizedDescription
+            await liveActivity.clearRoute()
+        }
     }
 
     // MARK: - 提醒距离
@@ -585,7 +843,16 @@ struct AlightingTripView: View {
         isTracking = false
         currentIndex = 0
         AudioKeepAliveService.shared.stop()
-        Task { await liveActivity.end() }
+        routePlan = nil
+        routeProgress = nil
+        routeRemaining = nil
+        routeError = nil
+        routedETA = nil
+        lastRouteFix = nil
+        Task {
+            await RouteService.shared.clear()
+            await liveActivity.end()
+        }
     }
 
     private func applyRadius(_ meters: Double) {

@@ -106,10 +106,13 @@ private struct TripLockScreenView: View {
                     Text(state.etaText)
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(Ink.tertiary)
+                    Text(state.percentText)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(Ink.accent)
                 }
             }
 
-            ProgressBar(progress: state.progress, height: 3)
+            ProgressBar(progress: state.progressValue, height: 3)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 13)
@@ -135,7 +138,7 @@ private struct ExpandedFooter: View {
                 Spacer(minLength: 6)
                 PhasePill(phase: state.phase)
             }
-            ProgressBar(progress: state.progress, height: 3)
+            ProgressBar(progress: state.progressValue, height: 3)
         }
         .padding(.horizontal, 6)
         .padding(.bottom, 2)
@@ -177,7 +180,7 @@ private struct ApproachRing: View {
             Circle()
                 .stroke(Ink.primary.opacity(0.12), lineWidth: lineWidth)
             Circle()
-                .trim(from: 0, to: max(0.04, state.progress))
+                .trim(from: 0, to: max(0.04, state.progressValue))
                 .stroke(Ink.accent, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             Image(systemName: state.phase == .arrived ? "checkmark" : "location.north.fill")

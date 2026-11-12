@@ -103,6 +103,11 @@ public final class Reminder {
         )
     }
 
+    /// 给人看的名字：优先项目名，其次地点名。
+    public var displayTitle: String {
+        title.isEmpty ? (placeName.isEmpty ? "未命名项目" : placeName) : title
+    }
+
     /// 列表行副标题用：「工作日 07:30–09:00」
     public var scheduleText: String {
         PlanSchedule.summary(weekdayMask: weekdayMask, start: startTime, end: endTime)

@@ -16,6 +16,21 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
     @Published public private(set) var registeredCount: Int = 0
     /// 最近一次注册失败的原因，直接显示给用户，省得靠猜。
     @Published public private(set) var lastFailure: String?
+    /// 最近几次围栏事件的处理结果（注册 / 被时段挡下 / 被精度挡下 / 已响铃）。
+    /// 真机上没有控制台，这几行字就是唯一的现场证据。
+    @Published public private(set) var recentEvents: [String] = []
+
+    private func note(_ text: String) {
+        let stamp = Self.clock.string(from: Date())
+        recentEvents.insert("\(stamp) \(text)", at: 0)
+        if recentEvents.count > 6 { recentEvents.removeLast(recentEvents.count - 6) }
+    }
+
+    private static let clock: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
 
     private override init() {
         super.init()
@@ -80,6 +95,7 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         monitoredReminderIds = Set(targets.map(\.reminderID))
         registeredCount = manager.monitoredRegions.count
         updateAuthorizationHint()
+        note("注册完成：系统接受 \(registeredCount) 个围栏")
     }
 
     private func isSameRegion(_ lhs: CLCircularRegion, _ rhs: CLCircularRegion) -> Bool {
@@ -149,6 +165,7 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         // （围栏按设计常挂，所以「现在是不是该响」必须在这里判，而不是靠注册时机）
         guard reminder.isScheduled(at: Date()) else {
             geofenceLogger.info("Reminder outside its schedule (weekday/time window). Suppressing.")
+            note("\(reminder.displayTitle) 进了范围，但不在生效时段，没响")
             return
         }
 
@@ -157,11 +174,13 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         // 这里主动要一次新定位，用「实际距离 + 定位精度半径」判断是否真进圈。
         guard await confirmArrival(of: reminder) else {
             geofenceLogger.info("Arrival suppressed: accuracy check failed.")
+            note("\(reminder.displayTitle) 进了范围，但复核判定还没到，没响")
             return
         }
 
         reminder.lastTriggeredAt = Date()
         ReminderStore.shared.save()
+        note("\(reminder.displayTitle) 到站，已响铃")
         NotificationService.shared.triggerNotification(for: reminder, alternativePlaceName: parsed.placeName,
                                                        alternativeCoordinate: parsed.coordinate)
 
@@ -187,6 +206,7 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         let distance = fix.distance(from: target)
         if distance > reminder.radius + slack {
             geofenceLogger.info("Arrival rejected: \(Int(distance))m from station, accuracy ±\(Int(fix.horizontalAccuracy))m, radius \(Int(reminder.radius))m")
+            note("复核否掉：距 \(Int(distance))m，精度 ±\(Int(fix.horizontalAccuracy))m，半径 \(Int(reminder.radius))m")
             return false
         }
         return true

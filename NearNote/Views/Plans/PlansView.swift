@@ -176,6 +176,17 @@ struct PlansView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if !geofence.recentEvents.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(geofence.recentEvents.prefix(3)), id: \.self) { line in
+                        Text(line)
+                            .font(NearNoteStyle.Typeface.micro)
+                            .foregroundStyle(NearNoteStyle.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
             HStack(spacing: 8) {
                 if !locationOK {
                     healthButton(locationService.authorizationStatus == .notDetermined ? "开启定位" : "改成始终") {

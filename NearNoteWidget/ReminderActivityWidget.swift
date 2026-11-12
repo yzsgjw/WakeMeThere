@@ -113,9 +113,55 @@ private struct TripLockScreenView: View {
             }
 
             ProgressBar(progress: state.progressValue, height: 3)
+
+            // 锁屏三控件：地图 / 铃声 / 结束。
+            // 只能用 Link 和 Button(intent:)，Live Activity 里没有 Picker、也没有闭包按钮；
+            // 亮度调节拿不到系统权限，所以这一版不做「调暗」。
+            HStack(spacing: 8) {
+                Link(destination: URL(string: "arrival://trip")!) {
+                    LockControlLabel(title: "地图", symbol: "map.fill", tint: Ink.accent)
+                }
+
+                Button(intent: CycleChimeIntent()) {
+                    LockControlLabel(
+                        title: state.ringtoneName.isEmpty ? "铃声" : state.ringtoneName,
+                        symbol: "bell.fill",
+                        tint: Ink.secondary
+                    )
+                }
+
+                Button(intent: EndTripIntent()) {
+                    LockControlLabel(title: "结束", symbol: "xmark", tint: Ink.secondary)
+                }
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 13)
+    }
+}
+
+/// 锁屏卡片上的小控件样式：图标 + 文案，等宽分三份
+private struct LockControlLabel: View {
+    let title: String
+    let symbol: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+            Text(title)
+                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+        }
+        .foregroundStyle(tint)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(Ink.primary.opacity(0.08))
+        )
     }
 }
 

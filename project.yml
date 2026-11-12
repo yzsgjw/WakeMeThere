@@ -66,6 +66,8 @@ targets:
           - "Info.plist"
       # Live Activity 的属性定义主 App 也要编译，两边共用一个文件
       - path: NearNote/Models/ReminderActivityAttributes.swift
+      # 锁屏按钮用 Button(intent:)，intent 类型必须在 Widget 侧可见
+      - path: NearNote/Services/TripIntents.swift
     dependencies:
       - sdk: WidgetKit.framework
       - sdk: SwiftUI.framework

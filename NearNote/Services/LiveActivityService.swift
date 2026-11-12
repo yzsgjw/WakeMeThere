@@ -200,7 +200,8 @@ final class LiveActivityService: ObservableObject {
             startDistanceMeters: max(safeDistance, 1),
             etaMinutes: eta,
             phase: Self.phase(for: safeDistance, radius: reminder.radius),
-            travelMode: Self.savedTravelMode()
+            travelMode: Self.savedTravelMode(),
+            ringtoneName: AlarmChime.current.label
         )
     }
 

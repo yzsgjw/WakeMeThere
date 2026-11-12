@@ -148,8 +148,9 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
 
     @discardableResult
     private func playChime() -> Bool {
-        guard let url = Bundle.main.url(forResource: "AlarmChime", withExtension: "wav") else {
-            alarmLog.error("AlarmChime.wav 没打进 Bundle，铃声阶段跳过")
+        let chime = AlarmChime.current
+        guard let url = Bundle.main.url(forResource: chime.resourceName, withExtension: "wav") else {
+            alarmLog.error("铃声 \(chime.fileName) 没打进 Bundle，铃声阶段跳过")
             return false
         }
         do {

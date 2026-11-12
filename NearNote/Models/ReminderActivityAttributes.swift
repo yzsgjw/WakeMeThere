@@ -79,6 +79,8 @@ public struct ReminderActivityAttributes: ActivityAttributes {
         /// 沿道路剩余里程（米）。用来区分"直线还有 800m"和"沿路还有 1.4km"。
         public var routeRemainingMeters: Double?
         public var travelMode: TravelMode
+        /// 当前铃声名（锁屏按钮上显示，点一下换下一首）
+        public var ringtoneName: String
 
         public init(
             stationName: String,
@@ -93,7 +95,8 @@ public struct ReminderActivityAttributes: ActivityAttributes {
             phase: Phase,
             routeProgress: Double? = nil,
             routeRemainingMeters: Double? = nil,
-            travelMode: TravelMode = .automobile
+            travelMode: TravelMode = .automobile,
+            ringtoneName: String = ""
         ) {
             self.stationName = stationName
             self.stationIndex = stationIndex
@@ -108,6 +111,7 @@ public struct ReminderActivityAttributes: ActivityAttributes {
             self.routeProgress = routeProgress
             self.routeRemainingMeters = routeRemainingMeters
             self.travelMode = travelMode
+            self.ringtoneName = ringtoneName
         }
 
         // MARK: 展示用（计算属性，不参与 Codable）

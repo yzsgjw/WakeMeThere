@@ -70,6 +70,9 @@ struct AlightingTripView: View {
         .onReceive(locationService.$currentLocation) { location in
             handleLocation(location)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .arrivalTripEnded)) { _ in
+            handleExternalEnd()
+        }
         .alert("提示", isPresented: errorAlertBinding) {
             Button("知道了", role: .cancel) { errorMessage = nil }
         } message: {
@@ -870,6 +873,25 @@ struct AlightingTripView: View {
             modelContext.delete(reminder)
             try? modelContext.save()
             await liveActivity.end(reminderID: reminder.id)
+            await GeofenceManager.shared.refresh(near: locationService.currentLocation)
+        }
+    }
+
+    /// 锁屏卡片上点了「结束」：系统已经关掉活动卡片并把 trip.isTracking 置 false，
+    /// 这里负责收拾 App 侧的东西（保活音频、路线缓存、定位）。
+    private func handleExternalEnd() {
+        guard isTracking else { return }
+        isTracking = false
+        currentIndex = 0
+        AudioKeepAliveService.shared.stop()
+        routePlan = nil
+        routeProgress = nil
+        routeRemaining = nil
+        routeError = nil
+        routedETA = nil
+        lastRouteFix = nil
+        Task {
+            await RouteService.shared.clear()
             await GeofenceManager.shared.refresh(near: locationService.currentLocation)
         }
     }

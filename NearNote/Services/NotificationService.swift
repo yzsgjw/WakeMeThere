@@ -41,8 +41,9 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
 
     /// 到站铃声。文件不存在时退回系统默认音，不能让通知变成静默。
     private func arrivalSound() -> UNNotificationSound {
-        if Bundle.main.url(forResource: "AlarmChime", withExtension: "wav") != nil {
-            return UNNotificationSound(named: UNNotificationSoundName("AlarmChime.wav"))
+        let chime = AlarmChime.current
+        if Bundle.main.url(forResource: chime.resourceName, withExtension: "wav") != nil {
+            return UNNotificationSound(named: UNNotificationSoundName(chime.fileName))
         }
         return .default
     }

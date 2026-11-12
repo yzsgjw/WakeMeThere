@@ -191,7 +191,7 @@ struct ReminderComposerView: View {
         } header: {
             Text("触发方式")
         } footer: {
-            if triggerMode == .similarCategory, let category = place.category {
+            if triggerMode == .similarCategory, place.category != nil {
                 Text("也可以在附近的同类地点提醒你。")
             } else {
                 Text("这条提醒只在 \(place.name) 附近出现。")

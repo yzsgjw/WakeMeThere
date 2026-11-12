@@ -10,17 +10,17 @@ struct MainView: View {
         Group {
             if hasSeenOnboarding {
                 TabView(selection: $selectedTab) {
-                    HomeView(onAdd: { showComposer = true })
-                        .tabItem { Label("Nearby", systemImage: "location.fill") }.tag(0)
+                    AlightingTripView(onAdd: { showComposer = true })
+                        .tabItem { Label("行程", systemImage: "location.north.line.fill") }.tag(0)
                     MapView(onAdd: { place in
                         composerPlace = place
                         showComposer = true
                     })
-                        .tabItem { Label("Map", systemImage: "map.fill") }.tag(1)
+                        .tabItem { Label("地图", systemImage: "map.fill") }.tag(1)
                     RemindersView(onAdd: { showComposer = true })
-                        .tabItem { Label("Reminders", systemImage: "checklist") }.tag(2)
+                        .tabItem { Label("站点", systemImage: "list.bullet") }.tag(2)
                     SettingsView()
-                        .tabItem { Label("Settings", systemImage: "gearshape.fill") }.tag(3)
+                        .tabItem { Label("设置", systemImage: "gearshape.fill") }.tag(3)
                 }
                 .tint(NearNoteStyle.accent)
             } else {
@@ -29,6 +29,10 @@ struct MainView: View {
         }
         .sheet(isPresented: $showComposer, onDismiss: { composerPlace = nil }) {
             ReminderComposerView(initialPlace: composerPlace)
+        }
+        .onOpenURL { url in
+            // 点灵动岛 / 锁屏卡片 → arrival://trip → 回到行程页
+            if url.scheme == "arrival" { selectedTab = 0 }
         }
         .preferredColorScheme(.dark)
     }

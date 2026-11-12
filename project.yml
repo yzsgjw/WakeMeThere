@@ -8,17 +8,25 @@ options:
   groupSortPosition: top
 
 # -----------------------------------------------------------------------------
-# 说明（改这个文件前先读）：
+# 改这个文件前先读：
 #
-# 1. 本项目刻意不使用任何需要 provisioning profile 特殊授权的能力：
+# 1. 本项目刻意不使用需要 provisioning profile 特殊授权的能力：
 #    - 没有 iCloud / CloudKit
 #    - 没有 App Group
 #    - 没有 Push
 #    - 没有 Critical Alerts
-#    这样 CI 出的未签名 ipa 可以直接交给第三方签名服务重签。
+#   这样 CI 出的未签名 ipa 可以直接交给第三方签名服务重签。
 #
-# 2. Widget 扩展（NearNoteWidget/）暂时不参与构建。要恢复的话把它加回
-#    targets 并重新引入 App Group——第三方签名服务通常签不过带 App Group 的包。
+# 2. 灵动岛 / 锁屏实时活动**必须**放在 Widget 扩展里（ActivityConfiguration
+#    只能在 WidgetKit 扩展中声明），所以 NearNoteWidgetExtension 是必需的，
+#    不是可选装饰。它只包含 ReminderActivityWidget.swift（Live Activity）
+#    和共享的 ReminderActivityAttributes.swift（纯 ActivityKit 值类型）。
+#    原项目的桌面小组件依赖 App Group 读 SwiftData，已删除。
+#
+# 3. 重签时注意：ipa 里会有 PlugIns/NearNoteWidgetExtension.appex，
+#    它必须和主 App 用同一张证书签，且 Embedded Content 的
+#    Application Identifier 要是主 App bundle id 的前缀
+#    （com.wayzs999.arrival → com.wayzs999.arrival.widget）。
 # -----------------------------------------------------------------------------
 
 targets:
@@ -28,6 +36,8 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: NearNote
+    dependencies:
+      - target: NearNoteWidgetExtension
     settings:
       base:
         INFOPLIST_FILE: NearNote/Info.plist
@@ -45,6 +55,32 @@ targets:
         NEARNOTE_FEEDBACK_ENDPOINT: ""
         NEARNOTE_PRIVACY_URL: ""
         NEARNOTE_SUPPORT_URL: ""
+
+  NearNoteWidgetExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: NearNoteWidget
+        excludes:
+          - "Info.plist"
+      # Live Activity 的属性定义主 App 也要编译，两边共用一个文件
+      - path: NearNote/Models/ReminderActivityAttributes.swift
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        INFOPLIST_FILE: NearNoteWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        PRODUCT_BUNDLE_IDENTIFIER: com.wayzs999.arrival.widget
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.0"
+        ENABLE_BITCODE: NO
 
   NearNoteTests:
     type: bundle.unit-test

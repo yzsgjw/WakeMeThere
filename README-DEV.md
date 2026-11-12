@@ -19,10 +19,11 @@
 | 换显示名 | `NearNotes` → `到站提醒` |
 | 权限文案中文化 | 三条 `NSLocation*UsageDescription` |
 | 补后台权限 | `Info.plist` 新增 `UIBackgroundModes: [audio, location]`（语音播报需要） |
-| 去掉 Widget 扩展 | 阶段 1~3 用不到，且 App Group 会让第三方签名失败 |
+| 重建 Widget 扩展 | 只保留 Live Activity（灵动岛必须在扩展里）；桌面小组件依赖 App Group，已删除 |
 | 只出 iPhone 版 | `TARGETED_DEVICE_FAMILY: 1` |
 
-**尚未做**：多站点接力、ETA、语音播报、追踪 UI —— 见第 5 节阶段计划。
+**已有**：行程主页（`Views/Trip/AlightingTripView.swift`）、灵动岛 / 锁屏实时活动、驾车 ETA、新设计系统（`Views/Components/NearNoteStyle.swift`）。
+**尚未做**：多站点自动接力、语音播报、自定义铃声 —— 见第 5 节阶段计划。
 
 ---
 
@@ -195,13 +196,40 @@ app/
 │   │   ├── LiveActivityService.swift 灵动岛
 │   │   └── ...
 │   └── Views/                       Home / Map / ReminderEditSheet / Settings / Onboarding
-├── NearNoteWidget/                  暂不参与构建
+├── NearNoteWidget/                  Widget 扩展：只做灵动岛 / 锁屏实时活动
 └── site/                            上游静态页，可忽略
 ```
 
 ---
 
-## 8. 待确认
+## 8. 灵动岛 / Live Activity
+
+一次行程 = 一条 Live Activity，三个位置共用同一份 `ContentState`：
+
+| 位置 | 文件 | 说明 |
+|---|---|---|
+| 灵动岛（紧凑 / 最小 / 展开） | `NearNoteWidget/ReminderActivityWidget.swift` | `DynamicIsland { ... }` |
+| 锁屏卡片 | 同上（`TripLockScreenView`） | 点它回 App，走 `arrival://trip` |
+| App 内 | `NearNote/Views/Trip/AlightingTripView.swift` | 页首大号剩余距离 |
+
+改之前先读这五条：
+
+1. `NearNote/Models/ReminderActivityAttributes.swift` 被 **App 和 Widget 两个 target 同时编译**，所以只许 import `ActivityKit` / `Foundation`，**不要** import SwiftData。
+2. 站点信息放 `ContentState`、不放 attributes：多站接力换下一站时只改 state，Live Activity 实例不重建 → 灵动岛不闪，也不撞 iOS 更新频率限制。
+3. `attributes.stationIDs` 存站点顺序、`ContentState.stationIndex` 存当前位置；App 被系统回收后重开靠这两个字段恢复"现在在第几站"。
+4. 更新有节流：距离变化 < 3% 且阶段没变就不推送（`LiveActivityService.update`）。iOS 对 Live Activity 更新有预算，别改成每秒推。
+5. 配色在 widget 里另存了一份 `private enum Ink` —— widget target 编译不到 `NearNoteStyle`。**改主色时两边都要改**。
+
+实测路径（iPhone 15 Pro Max / iOS 18.3.2）：设置 → 本 App → 确认「实时活动」为开 → 加 1~2 个站点 → 开始追踪 → 回主屏看紧凑态 → 长按看展开态 → 锁屏看卡片。
+
+已知限制：
+
+- 灵动岛只在「开始追踪」后出现，结束追踪立刻消失。
+- 第三方重签时 `.appex` 必须和主 App 用同一张证书。重签平台若只签主 App，`PlugIns/NearNoteWidgetExtension.appex` 就废了 —— 表现是装得上但灵动岛不显示，或启动即闪退。
+
+---
+
+## 9. 待确认
 
 - [ ] App 名字最终叫什么（现在是 `到站提醒`，改 `NearNote/Info.plist` 的 `CFBundleDisplayName` 一行）
 - [ ] Bundle ID 最终用哪个（现在是 `com.wayzs999.arrival`，改 `project.yml` 一行）

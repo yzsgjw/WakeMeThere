@@ -11,6 +11,11 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
     private let manager = CLLocationManager()
     private let placeSearch = PlaceSearchService()
     @Published public private(set) var monitoredReminderIds: Set<UUID> = []
+    /// 系统实际接受的围栏数量（不是我们想注册的数量）。
+    /// 界面拿它告诉用户「现在到底有没有在盯着」——注册失败时这里会是 0。
+    @Published public private(set) var registeredCount: Int = 0
+    /// 最近一次注册失败的原因，直接显示给用户，省得靠猜。
+    @Published public private(set) var lastFailure: String?
 
     private override init() {
         super.init()
@@ -59,9 +64,47 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
     private func apply(_ targets: [(region: CLCircularRegion, reminderID: UUID)]) {
         let identifiers = Set(targets.map(\.region.identifier))
         for region in manager.monitoredRegions where !identifiers.contains(region.identifier) { manager.stopMonitoring(for: region) }
-        let existing = Set(manager.monitoredRegions.map(\.identifier))
-        for target in targets where !existing.contains(target.region.identifier) { manager.startMonitoring(for: target.region) }
+
+        // 光看 identifier 存在与否是不够的：改了位置或半径之后 identifier 不变，
+        // 系统会一直守着**旧的中心点和旧半径**——界面显示新半径，实际却按老圈触发。
+        // 所以这里逐项比对中心点 / 半径 / 进出方向，不一致就重新注册。
+        var existing: [String: CLCircularRegion] = [:]
+        for case let region as CLCircularRegion in manager.monitoredRegions { existing[region.identifier] = region }
+
+        for target in targets {
+            let wanted = target.region
+            if let current = existing[wanted.identifier], isSameRegion(current, wanted) { continue }
+            if existing[wanted.identifier] != nil { manager.stopMonitoring(for: wanted) }
+            manager.startMonitoring(for: wanted)
+        }
         monitoredReminderIds = Set(targets.map(\.reminderID))
+        registeredCount = manager.monitoredRegions.count
+        updateAuthorizationHint()
+    }
+
+    private func isSameRegion(_ lhs: CLCircularRegion, _ rhs: CLCircularRegion) -> Bool {
+        abs(lhs.radius - rhs.radius) < 1 &&
+        abs(lhs.center.latitude - rhs.center.latitude) < 0.00001 &&
+        abs(lhs.center.longitude - rhs.center.longitude) < 0.00001 &&
+        lhs.notifyOnEntry == rhs.notifyOnEntry &&
+        lhs.notifyOnExit == rhs.notifyOnExit
+    }
+
+    /// 围栏注册是"静默失败"的：没权限、或只有"使用期间"权限，系统一律不报错也不触发。
+    /// 把这件事翻译成一句人话放到界面上，是这个 App 最容易被当成"坏了"的地方。
+    private func updateAuthorizationHint() {
+        switch manager.authorizationStatus {
+        case .authorizedAlways:
+            lastFailure = nil
+        case .authorizedWhenInUse:
+            lastFailure = "定位权限是「使用 App 期间」，App 退到后台后围栏不会唤醒它。需要改成「始终」。"
+        case .denied, .restricted:
+            lastFailure = "定位权限被拒绝，系统不会注册任何围栏。"
+        case .notDetermined:
+            lastFailure = "还没给定位权限，系统不会注册任何围栏。"
+        @unknown default:
+            lastFailure = nil
+        }
     }
 
     private func alternativeIdentifier(reminderID: UUID, place: Place) -> String {
@@ -79,6 +122,20 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
 
     nonisolated public func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
         geofenceLogger.error("Region monitoring failed: \(error.localizedDescription, privacy: .public)")
+        Task { @MainActor in
+            // 先同步数量（会用权限状态覆盖 lastFailure），再写下这次的具体失败原因
+            GeofenceManager.shared.refreshRegisteredCount()
+            GeofenceManager.shared.lastFailure = "围栏注册被系统拒绝：\(error.localizedDescription)"
+        }
+    }
+
+    nonisolated public func locationManager(_ manager: CLLocationManager, didStartMonitoringFor region: CLRegion) {
+        Task { @MainActor in GeofenceManager.shared.refreshRegisteredCount() }
+    }
+
+    public func refreshRegisteredCount() {
+        registeredCount = manager.monitoredRegions.count
+        updateAuthorizationHint()
     }
 
     private func handle(region: CLRegion) async {

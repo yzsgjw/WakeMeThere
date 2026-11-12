@@ -12,6 +12,8 @@ struct PlansView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Reminder.createdAt, order: .reverse) private var reminders: [Reminder]
     @StateObject private var locationService = LocationService.shared
+    @StateObject private var geofence = GeofenceManager.shared
+    @StateObject private var notifications = NotificationService.shared
 
     var onAdd: () -> Void
     var onMap: (() -> Void)?
@@ -40,6 +42,7 @@ struct PlansView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: NearNoteStyle.sectionGap) {
                             statusHeader
+                            healthCard
                             if !activePlans.isEmpty {
                                 section("进行中", plans: activePlans)
                             }
@@ -75,6 +78,16 @@ struct PlansView: View {
             }
             .navigationTitle("通勤项目")
             .navigationBarTitleDisplayMode(.large)
+            .task {
+                notifications.checkPermissionStatus()
+                geofence.refreshRegisteredCount()
+                // 有项目却还没问过定位 → 现在就问，否则系统压根不会注册围栏
+                if locationService.authorizationStatus == .notDetermined, !plans.isEmpty {
+                    locationService.requestWhenInUsePermission()
+                }
+                await locationService.updateMonitoredRegions()
+                geofence.refreshRegisteredCount()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -115,6 +128,117 @@ struct PlansView: View {
                 .lineLimit(2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - 到站体检
+
+    private var locationOK: Bool { locationService.authorizationStatus == .authorizedAlways }
+
+    private var locationValue: String {
+        switch locationService.authorizationStatus {
+        case .authorizedAlways: "始终允许"
+        case .authorizedWhenInUse: "仅使用期间"
+        case .denied: "已拒绝"
+        case .restricted: "受限"
+        case .notDetermined: "未询问"
+        @unknown default: "未知"
+        }
+    }
+
+    private var healthy: Bool { locationOK && notifications.isAuthorized && geofence.registeredCount > 0 }
+
+    /// 「到站能不能响」的体检卡。
+    /// 围栏是静默失败的：没权限、只有「使用期间」权限、半径太小，系统全都一声不吭。
+    /// 与其让用户猜"为什么进去不响"，不如把三件必要条件直接摆出来，外加一个绕过围栏的试响按钮。
+    private var healthCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: healthy ? "checkmark.shield.fill" : "exclamationmark.triangle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(healthy ? NearNoteStyle.accent : NearNoteStyle.textSecondary)
+                Text(healthy ? "到站会响" : "现在有环节没接通")
+                    .font(NearNoteStyle.Typeface.rowTitle)
+                    .foregroundStyle(NearNoteStyle.textPrimary)
+                Spacer()
+                Text(geofence.registeredCount > 0 ? "盯 \(geofence.registeredCount) 个" : "还没盯上")
+                    .font(NearNoteStyle.Typeface.label)
+                    .foregroundStyle(NearNoteStyle.textTertiary)
+            }
+
+            healthRow("定位权限", locationValue, ok: locationOK)
+            healthRow("通知权限", notifications.isAuthorized ? "已开启" : "没开", ok: notifications.isAuthorized)
+            healthRow("系统围栏", "\(geofence.registeredCount) 个已注册", ok: geofence.registeredCount > 0)
+
+            if let failure = geofence.lastFailure {
+                Text(failure)
+                    .font(NearNoteStyle.Typeface.micro)
+                    .foregroundStyle(NearNoteStyle.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                if !locationOK {
+                    healthButton(locationService.authorizationStatus == .notDetermined ? "开启定位" : "改成始终") {
+                        if locationService.authorizationStatus == .notDetermined {
+                            locationService.requestWhenInUsePermission()
+                        } else {
+                            locationService.requestAlwaysPermission()
+                        }
+                    }
+                }
+                if !notifications.isAuthorized {
+                    healthButton("开启通知") { notifications.requestPermission() }
+                }
+                healthButton("试响一下") { testArrival() }
+                Spacer()
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: NearNoteStyle.cardRadius, style: .continuous)
+                .fill(NearNoteStyle.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: NearNoteStyle.cardRadius, style: .continuous)
+                        .stroke(NearNoteStyle.hairline, lineWidth: 1)
+                )
+        )
+    }
+
+    private func healthRow(_ title: String, _ value: String, ok: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: ok ? "circle.fill" : "circle")
+                .font(.system(size: 6, weight: .bold))
+                .foregroundStyle(ok ? NearNoteStyle.accent : NearNoteStyle.textTertiary)
+            Text(title)
+                .font(NearNoteStyle.Typeface.label)
+                .foregroundStyle(NearNoteStyle.textSecondary)
+            Spacer()
+            Text(value)
+                .font(NearNoteStyle.Typeface.label)
+                .foregroundStyle(ok ? NearNoteStyle.textPrimary : NearNoteStyle.textTertiary)
+        }
+    }
+
+    private func healthButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(NearNoteStyle.Typeface.label)
+                .foregroundStyle(NearNoteStyle.accent)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule().fill(NearNoteStyle.accentGhost)
+                        .overlay(Capsule().stroke(NearNoteStyle.accent.opacity(0.35), lineWidth: 1))
+                )
+        }
+        .buttonStyle(PressableStyle())
+    }
+
+    /// 试响：整条到站链路跑一遍（含全屏页），不经过围栏。
+    private func testArrival() {
+        guard let plan = activePlans.first ?? plans.first else { return }
+        notifications.testArrival(for: plan)
     }
 
     // MARK: - 分组

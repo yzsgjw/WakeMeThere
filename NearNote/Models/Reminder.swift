@@ -151,9 +151,12 @@ public final class Reminder {
     }
     
     public var clRegion: CLCircularRegion {
+        // iOS 对圆形围栏有硬下限：小于 100m 的区域系统不会保证触发
+        // （低功耗下它靠基站/ Wi-Fi 定位判断进出，精度本来就几十米）。
+        // 界面允许拖到更小，但注册时统一抬到 100m，否则就是「设了却永远不响」。
         let region = CLCircularRegion(
             center: coordinate,
-            radius: radius,
+            radius: max(100, radius),
             identifier: regionIdentifier
         )
         region.notifyOnEntry = triggerOnArrival

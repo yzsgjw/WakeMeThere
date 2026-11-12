@@ -78,6 +78,34 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
         announceArrival(stationName: stationName, reminder: reminder, deferred: delay)
     }
 
+    /// 手动「试响一下」：整条到站链路（通知 + 铃声 + 震动 + 语音 + 全屏页）跑一遍，
+    /// 但**不经过围栏**。用来把「围栏没触发」「通知没权限」「铃声没声音」三件事分开：
+    /// 这条能响而走过去不响，问题就在围栏/权限；这条也不响，问题在通知或音频。
+    public func testArrival(for reminder: Reminder) {
+        let stationName = reminder.placeName.isEmpty ? reminder.title : reminder.placeName
+        center.add(UNNotificationRequest(
+            identifier: "test-\(reminder.id)-\(Date().timeIntervalSince1970)",
+            content: testContent(for: reminder, stationName: stationName),
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        ))
+        announceArrival(stationName: stationName, reminder: reminder, deferred: 0)
+        if reminder.fullScreenOnArrival {
+            NotificationCenter.default.post(name: .arrivalOpened, object: reminder.id)
+        }
+    }
+
+    private func testContent(for reminder: Reminder, stationName: String) -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = "到站提醒 · \(stationName)"
+        content.body = "（试响）\(reminder.title.isEmpty ? "已进入提醒范围，请准备下车" : reminder.title)"
+        content.categoryIdentifier = "REMINDER_CATEGORY"
+        content.sound = arrivalSound(for: reminder.chime)
+        content.interruptionLevel = .timeSensitive
+        content.threadIdentifier = "arrival-alerts"
+        content.userInfo = ["REMINDER_ID": reminder.id.uuidString]
+        return content
+    }
+
     /// 语音播报。前台：铃声 + 人声；后台/锁屏：只补人声（铃声已经由系统通知响过）。
     private func announceArrival(stationName: String, reminder: Reminder, deferred: TimeInterval) {
         // 免打扰时段里通知被推迟了，声音也跟着推迟，否则等于绕过用户设的安静时间

@@ -42,7 +42,7 @@ struct SettingsView: View {
                     if settings.radiusMode == .custom {
                         VStack(alignment: .leading, spacing: 12) {
                             LabeledContent("自定义距离", value: customRadiusLabel)
-                            Slider(value: $settings.customRadius, in: 50...2_000, step: 50)
+                            Slider(value: $settings.customRadius, in: 100...2_000, step: 50)
                         }
                         .padding(.vertical, 6)
                     }

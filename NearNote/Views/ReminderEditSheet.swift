@@ -299,7 +299,7 @@ struct ReminderComposerView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     LabeledContent("自定义距离", value: customRadiusLabel)
                         .font(NearNoteStyle.Typeface.body)
-                    Slider(value: $customRadius, in: 50...2_000, step: 50)
+                    Slider(value: $customRadius, in: 100...2_000, step: 50)
                         .tint(NearNoteStyle.accent)
                 }
             }
@@ -436,7 +436,9 @@ struct ReminderComposerView: View {
         value.categoryConfidence = place.categoryConfidence
         value.triggerMode = place.category == nil ? .specificPlace : triggerMode
         value.alternativesDisabled = false
-        value.radius = radiusMode.radius(customRadius: customRadius)
+        // 100m 是 iOS 圆形围栏的有效下限，比它更小的圈系统不保证触发，
+        // 所以这里就抬到 100，别让界面显示一个永远不会响的半径。
+        value.radius = max(100, radiusMode.radius(customRadius: customRadius))
         value.triggerOnArrival = triggerOnArrival
         value.isOneTime = isOneTime
         value.isEnabled = true
@@ -459,7 +461,7 @@ struct ReminderComposerView: View {
             modelContext.insert(value)
             TelemetryService.shared.track(.reminderCreated, properties: ["trigger": value.triggerModeRaw])
         }
-        if radiusMode == .custom { settings.customRadius = customRadius }
+        if radiusMode == .custom { settings.customRadius = max(100, customRadius) }
         try? modelContext.save()
         settings.remember(place)
         Task { await locationService.updateMonitoredRegions() }

@@ -8,7 +8,9 @@ on:
     branches: [main]
     paths-ignore:
       - "site/**"
-      - "**.md"
+      - "Docs/**"
+      - "**/*.md"
+      - "*.md"
   pull_request:
   workflow_dispatch:
 

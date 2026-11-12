@@ -105,10 +105,14 @@ struct PlansView: View {
     private func section(_ title: String, plans: [Reminder]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                SectionHeading(title: title)
+                Text(title)
+                    .font(NearNoteStyle.Typeface.title)
+                    .foregroundStyle(NearNoteStyle.textPrimary)
                 Text("\(plans.count)")
                     .font(NearNoteStyle.Typeface.micro)
                     .foregroundStyle(NearNoteStyle.textTertiary)
+                    .monospacedDigit()
+                Spacer(minLength: 0)
             }
             VStack(spacing: 10) {
                 ForEach(plans) { plan in

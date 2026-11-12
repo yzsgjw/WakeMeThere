@@ -6,20 +6,24 @@ struct MainView: View {
     @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding = false
     @State private var composerPlace: Place?
     @State private var arrivalTarget: ArrivalTarget?
+    @State private var showDim = false
 
     var body: some View {
         Group {
             if hasSeenOnboarding {
                 TabView(selection: $selectedTab) {
-                    PlansView(onAdd: { showComposer = true }, onMap: { selectedTab = 1 })
-                        .tabItem { Label("项目", systemImage: "square.stack.3d.up.fill") }.tag(0)
+                    // 首页 = 追踪页：一屏看到「还有多少米」，灵动岛和静音保活也从这里起
+                    AlightingTripView(onAdd: { showComposer = true })
+                        .tabItem { Label("追踪", systemImage: "location.north.line.fill") }.tag(0)
+                    PlansView(onAdd: { showComposer = true }, onMap: { selectedTab = 2 })
+                        .tabItem { Label("项目", systemImage: "square.stack.3d.up.fill") }.tag(1)
                     MapView(onAdd: { place in
                         composerPlace = place
                         showComposer = true
                     })
-                        .tabItem { Label("地图", systemImage: "map.fill") }.tag(1)
+                        .tabItem { Label("地图", systemImage: "map.fill") }.tag(2)
                     SettingsView()
-                        .tabItem { Label("设置", systemImage: "gearshape.fill") }.tag(2)
+                        .tabItem { Label("设置", systemImage: "gearshape.fill") }.tag(3)
                 }
                 .tint(NearNoteStyle.accent)
             } else {
@@ -36,13 +40,18 @@ struct MainView: View {
                 NearNoteBackground()
             }
         }
+        .fullScreenCover(isPresented: $showDim) { DimView() }
         .onReceive(NotificationCenter.default.publisher(for: .arrivalOpened)) { note in
             guard let id = note.object as? UUID else { return }
             arrivalTarget = ArrivalTarget(id: id)
         }
         .onOpenURL { url in
             guard url.scheme == "arrival" else { return }
-            // arrival://arrival/<uuid> → 到站全屏页；arrival://trip → 项目页
+            // arrival://arrival/<uuid> → 到站全屏页；arrival://dim → 极暗页；其余 → 追踪页
+            if url.host == "dim" {
+                showDim = true
+                return
+            }
             if url.host == "arrival",
                let raw = url.pathComponents.last,
                let id = UUID(uuidString: raw) {

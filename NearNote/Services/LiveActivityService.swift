@@ -112,7 +112,8 @@ final class LiveActivityService: ObservableObject {
         progress: Double,
         remainingMeters: Double,
         remainingMinutes: Int?,
-        mode: TravelMode
+        mode: TravelMode,
+        paused: Bool = false
     ) async {
         guard let activity, var state = currentState else { return }
 
@@ -120,11 +121,13 @@ final class LiveActivityService: ObservableObject {
         let progressChanged = abs(clamped - (state.routeProgress ?? -1)) >= 0.003
         let minutesChanged = remainingMinutes != nil && state.etaMinutes != remainingMinutes
         let modeChanged = state.travelMode != mode
-        guard progressChanged || minutesChanged || modeChanged else { return }
+        let pauseChanged = state.paused != paused
+        guard progressChanged || minutesChanged || modeChanged || pauseChanged else { return }
 
         state.routeProgress = clamped
         state.routeRemainingMeters = max(0, remainingMeters)
         state.travelMode = mode
+        state.paused = paused
         if let remainingMinutes { state.etaMinutes = remainingMinutes }
         currentState = state
         await activity.update(

@@ -41,6 +41,13 @@ struct AlightingTripView: View {
     @State private var lastRouteFix: CLLocation?
     @State private var lastReplanAt = Date.distantPast
 
+    /// 平滑后的移动速度（m/s）。GPS 瞬时速度抖得厉害，直接用会让 ETA 数字乱跳。
+    @State private var smoothedSpeed: Double?
+    /// 最近一次"真的挪动了"的时间和位置：静止 5 分钟就判候车
+    @State private var lastMovementAt = Date()
+    @State private var lastMovementFix: CLLocation?
+    @State private var isStationary = false
+
     private let radiusOptions: [Double] = [200, 300, 500, 1_000, 2_000]
 
     // MARK: - Body
@@ -127,7 +134,7 @@ struct AlightingTripView: View {
             Circle()
                 .fill(isTracking ? NearNoteStyle.accent : NearNoteStyle.textTertiary)
                 .frame(width: 6, height: 6)
-            Text(isTracking ? "追踪中" : "未开始")
+            Text(isTracking ? (isStationary ? "候车中" : "追踪中") : "未开始")
                 .font(NearNoteStyle.Typeface.micro)
                 .foregroundStyle(isTracking ? NearNoteStyle.accent : NearNoteStyle.textSecondary)
         }
@@ -207,6 +214,7 @@ struct AlightingTripView: View {
     }
 
     private var etaValue: String {
+        // 候车中冻结：数字不再变，靠 statusPill 的「候车中」说明原因
         if let routedETA { return "\(routedETA)" }
         guard let stop = nextStop else { return "—" }
         let meters = distance(to: stop)
@@ -388,23 +396,49 @@ struct AlightingTripView: View {
         }
         lastRouteFix = location
 
+        // ---- 速度平滑：指数滑动平均，只吃最近几个点的七成权重 ----
+        if location.speed >= 0 {
+            let raw = max(0, location.speed)
+            smoothedSpeed = smoothedSpeed.map { $0 * 0.7 + raw * 0.3 } ?? raw
+        }
+
+        // ---- 静止判定：5 分钟内位移不到 20m 就当作在候车/停站 ----
+        if let lastMovementFix {
+            if location.distance(from: lastMovementFix) > 20 {
+                self.lastMovementFix = location
+                lastMovementAt = Date()
+                isStationary = false
+            }
+        } else {
+            lastMovementFix = location
+            lastMovementAt = Date()
+        }
+        if Date().timeIntervalSince(lastMovementAt) > 300 { isStationary = true }
+
         guard let projection = RouteService.project(location.coordinate, on: plan) else { return }
         routeProgress = projection.progress
         routeRemaining = projection.remainingMeters
 
-        let minutes = RouteService.remainingMinutes(
-            plan: plan,
-            projection: projection,
-            currentSpeed: location.speed >= 0 ? location.speed : nil
-        )
-        if let minutes { routedETA = minutes }
+        // 候车时冻结剩余时间：动都不动还报"还剩 12 分钟"才是最假的
+        let minutes: Int?
+        if isStationary {
+            minutes = routedETA
+        } else {
+            minutes = RouteService.remainingMinutes(
+                plan: plan,
+                projection: projection,
+                currentSpeed: smoothedSpeed
+            )
+            if let minutes { routedETA = minutes }
+        }
 
         Task {
             await liveActivity.updateRoute(
                 progress: projection.progress,
                 remainingMeters: projection.remainingMeters,
                 remainingMinutes: minutes,
-                mode: plan.mode
+                mode: plan.mode,
+                paused: isStationary
             )
         }
 
@@ -441,14 +475,15 @@ struct AlightingTripView: View {
             let minutes = RouteService.remainingMinutes(
                 plan: plan,
                 projection: projection,
-                currentSpeed: here.speed >= 0 ? here.speed : nil
+                currentSpeed: smoothedSpeed ?? (here.speed >= 0 ? here.speed : nil)
             )
-            if let minutes { routedETA = minutes }
+            if let minutes, !isStationary { routedETA = minutes }
             await liveActivity.updateRoute(
                 progress: projection.progress,
                 remainingMeters: projection.remainingMeters,
-                remainingMinutes: minutes,
-                mode: plan.mode
+                remainingMinutes: routedETA,
+                mode: plan.mode,
+                paused: isStationary
             )
         } catch {
             // 规划失败不影响到站提醒：围栏照旧，界面退回直线距离
@@ -744,7 +779,11 @@ struct AlightingTripView: View {
     // MARK: - 数据
 
     private var activeStations: [Reminder] {
-        reminders.filter { $0.isEnabled && !$0.isCompleted && !$0.isArchived }
+        let all = reminders.filter { $0.isEnabled && !$0.isCompleted && !$0.isArchived }
+        // 首页只关心"此刻生效"的项目（星期 + 时间段都对得上）；
+        // 万一个都没生效（比如周末不开车），就把全部项目放出来手动挑。
+        let scheduled = all.filter { $0.isScheduled() }
+        return scheduled.isEmpty ? all : scheduled
     }
 
     /// 追踪中按开始时的顺序（接力顺序不能因为位置变化而乱跳），
@@ -821,6 +860,10 @@ struct AlightingTripView: View {
         stationIDsRaw = plan.map { $0.id.uuidString }.joined(separator: ",")
         currentIndex = 0
         isTracking = true
+        smoothedSpeed = nil
+        lastMovementFix = nil
+        lastMovementAt = Date()
+        isStationary = false
         // 静音保活：追踪期间让 App 不被挂起，围栏触发时才有机会跑语音与灵动岛接力
         AudioKeepAliveService.shared.startIfNeeded()
 
@@ -852,6 +895,10 @@ struct AlightingTripView: View {
         routeError = nil
         routedETA = nil
         lastRouteFix = nil
+        smoothedSpeed = nil
+        lastMovementFix = nil
+        lastMovementAt = Date()
+        isStationary = false
         Task {
             await RouteService.shared.clear()
             await liveActivity.end()
@@ -890,6 +937,10 @@ struct AlightingTripView: View {
         routeError = nil
         routedETA = nil
         lastRouteFix = nil
+        smoothedSpeed = nil
+        lastMovementFix = nil
+        lastMovementAt = Date()
+        isStationary = false
         Task {
             await RouteService.shared.clear()
             await GeofenceManager.shared.refresh(near: locationService.currentLocation)
@@ -910,6 +961,8 @@ struct AlightingTripView: View {
     }
 
     private func refreshETA() async {
+        // 候车中不刷新剩余时间（保持上一次的数，别让它越等越涨）
+        guard !isStationary else { return }
         guard let stop = nextStop, let here = locationService.currentLocation else { return }
         let destination = CLLocationCoordinate2D(latitude: stop.latitude, longitude: stop.longitude)
         let estimate = await RouteETAService.shared.estimate(from: here.coordinate, to: destination)

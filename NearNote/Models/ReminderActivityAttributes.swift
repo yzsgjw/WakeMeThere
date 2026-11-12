@@ -46,7 +46,7 @@ public struct ReminderActivityAttributes: ActivityAttributes {
 
         public var label: String {
             switch self {
-            case .tracking: return "前往中"
+            case .tracking: return "追踪中"
             case .close: return "即将到站"
             case .arrived: return "已到站"
             }
@@ -81,6 +81,8 @@ public struct ReminderActivityAttributes: ActivityAttributes {
         public var travelMode: TravelMode
         /// 当前铃声名（锁屏按钮上显示，点一下换下一首）
         public var ringtoneName: String
+        /// 静止超过 5 分钟（候车）：剩余时间暂停更新，卡片上显示「候车中」
+        public var paused: Bool
 
         public init(
             stationName: String,
@@ -96,7 +98,8 @@ public struct ReminderActivityAttributes: ActivityAttributes {
             routeProgress: Double? = nil,
             routeRemainingMeters: Double? = nil,
             travelMode: TravelMode = .automobile,
-            ringtoneName: String = ""
+            ringtoneName: String = "",
+            paused: Bool = false
         ) {
             self.stationName = stationName
             self.stationIndex = stationIndex
@@ -112,6 +115,12 @@ public struct ReminderActivityAttributes: ActivityAttributes {
             self.routeRemainingMeters = routeRemainingMeters
             self.travelMode = travelMode
             self.ringtoneName = ringtoneName
+            self.paused = paused
+        }
+
+        /// 卡片左上角的状态文字：候车中优先于阶段文案
+        public var statusLabel: String {
+            paused ? "候车中" : phase.label
         }
 
         // MARK: 展示用（计算属性，不参与 Codable）

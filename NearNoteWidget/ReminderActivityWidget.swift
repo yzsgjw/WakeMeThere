@@ -89,9 +89,7 @@ private struct TripLockScreenView: View {
                         Text(state.stationProgressText)
                             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                             .foregroundStyle(Ink.tertiary.opacity(0.8))
-                        if state.phase != .tracking {
-                            PhasePill(phase: state.phase)
-                        }
+                        PhasePill(phase: state.phase, text: state.statusLabel)
                     }
                     Text(state.stationName)
                         .font(.system(size: 17, weight: .bold, design: .rounded))
@@ -114,12 +112,16 @@ private struct TripLockScreenView: View {
 
             ProgressBar(progress: state.progressValue, height: 3)
 
-            // 锁屏三控件：地图 / 铃声 / 结束。
-            // 只能用 Link 和 Button(intent:)，Live Activity 里没有 Picker、也没有闭包按钮；
-            // 亮度调节拿不到系统权限，所以这一版不做「调暗」。
+            // 锁屏控件：地图 / 调暗 / 铃声 / 结束。
+            // 只能用 Link 和 Button(intent:)，Live Activity 里没有 Picker、也没有闭包按钮。
+            // 「调暗」= 回到 App 的极暗页（扩展进程改不了系统亮度，只有 App 前台能改）。
             HStack(spacing: 8) {
                 Link(destination: URL(string: "arrival://trip")!) {
                     LockControlLabel(title: "地图", symbol: "map.fill", tint: Ink.accent)
+                }
+
+                Link(destination: URL(string: "arrival://dim")!) {
+                    LockControlLabel(title: "调暗", symbol: "moon.fill", tint: Ink.secondary)
                 }
 
                 Button(intent: CycleChimeIntent()) {
@@ -256,9 +258,10 @@ private struct ProgressBar: View {
 
 private struct PhasePill: View {
     let phase: ReminderActivityAttributes.Phase
+    var text: String?
 
     var body: some View {
-        Text(phase.label)
+        Text(text ?? phase.label)
             .font(.system(size: 10, weight: .bold, design: .rounded))
             .foregroundStyle(phase == .tracking ? Ink.secondary : .white)
             .padding(.horizontal, 7)

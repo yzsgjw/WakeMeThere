@@ -139,7 +139,7 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         let slack = max(80, reminder.radius * 0.3) + fix.horizontalAccuracy
         let distance = fix.distance(from: target)
         if distance > reminder.radius + slack {
-            geofenceLogger.info("Arrival rejected: \(Int(distance))m from station, accuracy \pm\(Int(fix.horizontalAccuracy))m, radius \(Int(reminder.radius))m")
+            geofenceLogger.info("Arrival rejected: \(Int(distance))m from station, accuracy ±\(Int(fix.horizontalAccuracy))m, radius \(Int(reminder.radius))m")
             return false
         }
         return true

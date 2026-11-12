@@ -81,40 +81,38 @@ struct ReminderComposerView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    TextField("要提醒什么？", text: $title, axis: .vertical)
-                        .font(.title2.weight(.semibold))
-                        .lineLimit(2...4)
-                        .focused($titleFocused)
-                        .submitLabel(.next)
-                        .padding(.vertical, 8)
-                } header: {
-                    Text("提醒")
-                }
+            ZStack {
+                NearNoteBackground()
 
-                placeSection
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        titleCard
+                        placeCard
 
-                if let place = selectedPlace {
-                    triggerSection(for: place)
-                    radiusSection
-                    scheduleSection
-                    timeSection
-                    alarmSection
-                    repeatSection
+                        if let place = selectedPlace {
+                            triggerCard(for: place)
+                            radiusCard
+                            scheduleCard
+                            timeCard
+                            alarmCard
+                            repeatCard
+                            saveBlock
+                        }
+                    }
+                    .padding(.horizontal, NearNoteStyle.gutter)
+                    .padding(.top, 14)
+                    .padding(.bottom, 44)
                 }
+                .scrollIndicators(.hidden)
+                .scrollDismissesKeyboard(.immediately)
+                .tint(NearNoteStyle.accent)
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .background(NearNoteBackground())
-            .tint(NearNoteStyle.accent)
-            .scrollDismissesKeyboard(.immediately)
-            .navigationTitle(reminder == nil ? "新建提醒" : "编辑提醒")
+            .navigationTitle(reminder == nil ? "新建通勤项目" : "编辑通勤项目")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(NearNoteStyle.canvas.opacity(0.94), for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
+                        .tint(NearNoteStyle.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存", action: save)
@@ -123,10 +121,8 @@ struct ReminderComposerView: View {
                 }
             }
             .onAppear {
-                // 两件事都别在这里做：
-                // 1) 抢焦点 —— sheet 转场没结束就弹键盘，键盘之外的区域会整块点不动；
-                // 2) 请求定位权限 —— 系统授权框盖在 sheet 上，关掉之后这张表照样点不动。
-                // 只复用已经拿到的定位，权限交给追踪页在开始追踪时申请。
+                // 这里只做一件事：如果已经有定位权限就直接复用。
+                // 不抢焦点、不申请权限 —— 两者都会让整张页面板卡住。
                 if locationService.authorizationStatus == .authorizedWhenInUse
                     || locationService.authorizationStatus == .authorizedAlways {
                     locationService.startInUseTracking()
@@ -136,13 +132,77 @@ struct ReminderComposerView: View {
         }
     }
 
-    @ViewBuilder private var placeSection: some View {
-        Section {
+    // MARK: - 页面骨架
+
+    /// 这里故意不用系统 `Form`。
+    /// `Form` 在 fullScreenCover 里和滚动、键盘、命中区域会互相打架，
+    /// 症状就是「表单弹出来了，但整块点不动、只有键盘能点」。
+    /// 换成自己搭的卡片：ScrollView + VStack，控制权全在自己手里。
+    private func card<Content: View>(
+        _ title: String?,
+        footer: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let title {
+                Text(title)
+                    .font(NearNoteStyle.Typeface.label)
+                    .foregroundStyle(NearNoteStyle.textTertiary)
+                    .padding(.leading, 2)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(
+                NearNoteStyle.surface,
+                in: RoundedRectangle(cornerRadius: NearNoteStyle.cardRadius, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: NearNoteStyle.cardRadius, style: .continuous)
+                    .strokeBorder(NearNoteStyle.hairline, lineWidth: 1)
+            }
+
+            if let footer {
+                Text(footer)
+                    .font(NearNoteStyle.Typeface.micro)
+                    .foregroundStyle(NearNoteStyle.textTertiary)
+                    .padding(.leading, 2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private static let dayOptions: [(label: String, bit: Int)] = [
+        ("一", 1 << 1), ("二", 1 << 2), ("三", 1 << 3), ("四", 1 << 4),
+        ("五", 1 << 5), ("六", 1 << 6), ("日", 1 << 0)
+    ]
+
+    private var titleCard: some View {
+        card("提醒") {
+            TextField("要提醒什么？", text: $title, axis: .vertical)
+                .font(NearNoteStyle.Typeface.title)
+                .foregroundStyle(NearNoteStyle.textPrimary)
+                .lineLimit(1...3)
+                .focused($titleFocused)
+        }
+    }
+
+    private var placeCard: some View {
+        card("地点", footer: selectedPlace == nil ? "选一个要提醒的地点。" : nil) {
             if let place = selectedPlace {
                 SelectedPlaceRow(place: place)
-                Button("换个地点") {
+
+                Button {
                     withAnimation { selectedPlace = nil }
+                } label: {
+                    Text("换个地点")
+                        .font(NearNoteStyle.Typeface.label)
+                        .foregroundStyle(NearNoteStyle.accent)
                 }
+                .buttonStyle(.plain)
             } else {
                 NavigationLink {
                     PlaceSearchPickerView(service: searchService, onSelect: choose)
@@ -153,6 +213,7 @@ struct ReminderComposerView: View {
                         subtitle: "商户、地标、地址"
                     )
                 }
+                .buttonStyle(.plain)
 
                 NavigationLink {
                     MapPickerView(
@@ -170,6 +231,7 @@ struct ReminderComposerView: View {
                         subtitle: "圆圈就是提醒范围，拖到站点上"
                     )
                 }
+                .buttonStyle(.plain)
 
                 NavigationLink {
                     LinkPlacePickerView(onSelect: choose)
@@ -180,6 +242,7 @@ struct ReminderComposerView: View {
                         subtitle: "Apple 地图、Google 地图、Waze"
                     )
                 }
+                .buttonStyle(.plain)
 
                 NavigationLink {
                     SavedPlacePickerView(onSelect: choose)
@@ -190,24 +253,23 @@ struct ReminderComposerView: View {
                         subtitle: "家、公司，以及你用过的地点"
                     )
                 }
-            }
-        } header: {
-            Text("地点")
-        } footer: {
-            if selectedPlace == nil {
-                Text("选一个要提醒的地点。")
+                .buttonStyle(.plain)
             }
         }
     }
 
-    private func triggerSection(for place: Place) -> some View {
-        Section {
+    private func triggerCard(for place: Place) -> some View {
+        card(
+            "触发方式",
+            footer: triggerMode == .similarCategory && place.category != nil
+                ? "也可以在附近的同类地点提醒你。"
+                : "这条提醒只在 \(place.name) 附近出现。"
+        ) {
             Picker("时间", selection: $triggerOnArrival) {
                 Text("进入范围时").tag(true)
                 Text("离开范围时").tag(false)
             }
             .pickerStyle(.segmented)
-            .padding(.vertical, 4)
 
             Picker("触发方式", selection: $triggerMode) {
                 Text("只在这个地点").tag(ReminderTriggerMode.specificPlace)
@@ -217,19 +279,16 @@ struct ReminderComposerView: View {
             }
             .pickerStyle(.inline)
             .labelsHidden()
-        } header: {
-            Text("触发方式")
-        } footer: {
-            if triggerMode == .similarCategory, place.category != nil {
-                Text("也可以在附近的同类地点提醒你。")
-            } else {
-                Text("这条提醒只在 \(place.name) 附近出现。")
-            }
         }
     }
 
-    private var radiusSection: some View {
-        Section {
+    private var radiusCard: some View {
+        card(
+            "到站半径",
+            footer: radiusMode == .automatic
+                ? "自动模式会按这个地点挑一个稳妥的距离，同时尽量省电。"
+                : "用的是系统区域围栏，不做持续定位，耗电低。"
+        ) {
             Picker("距离", selection: $radiusMode) {
                 ForEach(RadiusMode.allCases) { mode in
                     Text(mode.title).tag(mode)
@@ -237,44 +296,18 @@ struct ReminderComposerView: View {
             }
 
             if radiusMode == .custom {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
                     LabeledContent("自定义距离", value: customRadiusLabel)
+                        .font(NearNoteStyle.Typeface.body)
                     Slider(value: $customRadius, in: 50...2_000, step: 50)
                         .tint(NearNoteStyle.accent)
                 }
-                .padding(.vertical, 6)
             }
-        } header: {
-            Text("到站半径")
-        } footer: {
-            Text(radiusMode == .automatic
-                 ? "自动模式会按这个地点挑一个稳妥的距离，同时尽量省电。"
-                 : "用的是系统区域围栏，不做持续定位，耗电低。")
         }
     }
 
-    private var repeatSection: some View {
-        Section {
-            Picker("重复", selection: $isOneTime) {
-                Text("一次性").tag(true)
-                Text("可重复").tag(false)
-            }
-        } footer: {
-            Text(isOneTime
-                 ? "完成后这条提醒会移到「已完成」。"
-                 : "可重复的提醒完成后，可以在「提醒」页把它恢复。")
-        }
-    }
-
-    // MARK: - 星期与提醒方式
-
-    private static let dayOptions: [(label: String, bit: Int)] = [
-        ("一", 1 << 1), ("二", 1 << 2), ("三", 1 << 3), ("四", 1 << 4),
-        ("五", 1 << 5), ("六", 1 << 6), ("日", 1 << 0)
-    ]
-
-    private var scheduleSection: some View {
-        Section {
+    private var scheduleCard: some View {
+        card("生效星期", footer: "选中的日子才响。至少选一天，默认周一~周五。") {
             HStack(spacing: 6) {
                 ForEach(Self.dayOptions, id: \.bit) { option in
                     let on = weekdayMask & option.bit != 0
@@ -289,28 +322,41 @@ struct ReminderComposerView: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 38)
                             .background(
-                                on ? NearNoteStyle.accent : NearNoteStyle.surface,
+                                on ? NearNoteStyle.accent : NearNoteStyle.secondarySurface,
                                 in: RoundedRectangle(cornerRadius: 11, style: .continuous)
                             )
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.vertical, 2)
-        } header: {
-            Text("生效星期")
-        } footer: {
-            Text("选中的日子才响。至少选一天，默认周一~周五。")
         }
     }
 
-    private var alarmSection: some View {
-        Section {
+    private var timeCard: some View {
+        card(
+            "时间窗",
+            footer: hasTimeConstraints ? "只在这个时间段内触发提醒。" : "全天任意时间都可能触发。"
+        ) {
+            Toggle("时间限制", isOn: $hasTimeConstraints)
+
+            if hasTimeConstraints {
+                DatePicker("开始时间", selection: $startTime, displayedComponents: .hourAndMinute)
+                DatePicker("结束时间", selection: $endTime, displayedComponents: .hourAndMinute)
+            }
+        }
+    }
+
+    private var alarmCard: some View {
+        card(
+            "到站提醒方式",
+            footer: "项目自己的铃声与震动，不受别处设置影响。全屏提示会在 App 打开着时自动盖满屏幕；锁屏时点通知也能直接进全屏。"
+        ) {
             Picker("铃声", selection: $chime) {
                 ForEach(AlarmChime.allCases, id: \.self) { item in
                     Text(item.label).tag(item)
                 }
             }
+
             Button {
                 AlarmPlaybackService.shared.announceArrival(
                     stationName: selectedPlace?.name ?? "下一站",
@@ -319,30 +365,41 @@ struct ReminderComposerView: View {
                 )
             } label: {
                 Label("试听", systemImage: "play.circle.fill")
+                    .font(NearNoteStyle.Typeface.body)
+                    .foregroundStyle(NearNoteStyle.accent)
             }
+            .buttonStyle(.plain)
 
             Toggle("震动", isOn: $vibrationEnabled)
             Toggle("到站时全屏提示", isOn: $fullScreenOnArrival)
-        } header: {
-            Text("到站提醒方式")
-        } footer: {
-            Text("项目自己的铃声与震动，不受别处设置影响。全屏提示会在 App 打开着时自动盖满屏幕；锁屏时点通知也能直接进全屏。")
         }
     }
 
-    private var timeSection: some View {
-        Section {
-            Toggle("时间限制", isOn: $hasTimeConstraints)
-            
-            if hasTimeConstraints {
-                DatePicker("开始时间", selection: $startTime, displayedComponents: .hourAndMinute)
-                DatePicker("结束时间", selection: $endTime, displayedComponents: .hourAndMinute)
+    private var repeatCard: some View {
+        card(
+            "重复",
+            footer: isOneTime
+                ? "完成后这条提醒会移到「已完成」。"
+                : "可重复的提醒完成后，可以再把它打开。"
+        ) {
+            Picker("重复", selection: $isOneTime) {
+                Text("一次性").tag(true)
+                Text("可重复").tag(false)
             }
-        } header: {
-            Text("时间窗")
-        } footer: {
-            Text(hasTimeConstraints ? "只在这个时间段内触发提醒。" : "全天任意时间都可能触发。")
         }
+    }
+
+    private var saveBlock: some View {
+        VStack(spacing: 8) {
+            PrimaryActionButton(title: "保存项目", symbol: "checkmark") { save() }
+                .disabled(!canSave)
+                .opacity(canSave ? 1 : 0.5)
+
+            Text(canSave ? "保存后会立刻按新设置注册到站提醒。" : "先选一个地点，才能保存。")
+                .font(NearNoteStyle.Typeface.micro)
+                .foregroundStyle(NearNoteStyle.textTertiary)
+        }
+        .padding(.top, 6)
     }
 
     private var customRadiusLabel: String {

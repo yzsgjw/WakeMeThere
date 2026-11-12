@@ -44,6 +44,64 @@ public final class LocationService: NSObject, ObservableObject, CLLocationManage
         manager.requestLocation()
     }
 
+    /// 到站复核专用：尽量拿到一个"刚刚测到"的定位。
+    /// 围栏事件常常带着上一次缓存的位置到达（可能已经过去几分钟），
+    /// 直接据此判定"已到站"就是误报的主要来源。
+    public func arrivalFix(timeout: TimeInterval = 5, maxAge: TimeInterval = 6) async -> CLLocation? {
+        guard authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse else {
+            return currentLocation
+        }
+        if let location = currentLocation, Date().timeIntervalSince(location.timestamp) <= maxAge {
+            return location
+        }
+        manager.requestLocation()
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let location = currentLocation, Date().timeIntervalSince(location.timestamp) <= maxAge {
+                return location
+            }
+            try? await Task.sleep(nanoseconds: 400_000_000)
+        }
+        return currentLocation
+    }
+
+    /// 定位质量分档：给界面提示，也给到站复核决定"要不要放宽"
+    public enum AccuracyQuality: Equatable {
+        case strong, fair, weak, unavailable
+
+        public var label: String {
+            switch self {
+            case .strong: return "定位好"
+            case .fair: return "定位一般"
+            case .weak: return "信号弱"
+            case .unavailable: return "定位中"
+            }
+        }
+
+        public var symbol: String {
+            switch self {
+            case .strong: return "location.fill"
+            case .fair: return "location"
+            case .weak: return "location.slash"
+            case .unavailable: return "location.circle"
+            }
+        }
+    }
+
+    public var accuracyQuality: AccuracyQuality {
+        guard let location = currentLocation, location.horizontalAccuracy >= 0 else { return .unavailable }
+        switch location.horizontalAccuracy {
+        case ..<40: return .strong
+        case ..<90: return .fair
+        default: return .weak
+        }
+    }
+
+    public var accuracyText: String {
+        guard let location = currentLocation, location.horizontalAccuracy >= 0 else { return "定位中" }
+        return "±\(Int(location.horizontalAccuracy.rounded())) m"
+    }
+
     public func updateMonitoredRegions() async {
         await GeofenceManager.shared.refresh(near: currentLocation ?? manager.location)
         objectWillChange.send()

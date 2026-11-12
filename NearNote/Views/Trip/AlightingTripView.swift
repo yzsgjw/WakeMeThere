@@ -73,8 +73,33 @@ struct AlightingTripView: View {
                     .foregroundStyle(NearNoteStyle.textPrimary)
             }
             Spacer()
+            if isTracking { signalPill }
             statusPill
         }
+        .overlay(alignment: .bottomLeading) {
+            if isTracking, locationService.accuracyQuality == .weak, let nextStop {
+                Text("信号弱，\(nextStop.placeName) 的到站提醒可能会晚一点点。")
+                    .font(NearNoteStyle.Typeface.micro)
+                    .foregroundStyle(NearNoteStyle.textTertiary)
+                    .offset(y: 20)
+            }
+        }
+    }
+
+    /// 定位质量：围栏判定靠的是定位精度，
+    /// 用户至少能看见"现在这套判断值不值得信"。
+    private var signalPill: some View {
+        let quality = locationService.accuracyQuality
+        return HStack(spacing: 5) {
+            Image(systemName: quality.symbol)
+                .font(.system(size: 10, weight: .semibold))
+            Text(quality == .weak ? "\(quality.label) \(locationService.accuracyText)" : locationService.accuracyText)
+                .font(NearNoteStyle.Typeface.micro)
+        }
+        .foregroundStyle(quality == .weak ? NearNoteStyle.textTertiary : NearNoteStyle.textSecondary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(NearNoteStyle.raisedSurface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var statusPill: some View {

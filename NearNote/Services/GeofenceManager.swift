@@ -110,6 +110,14 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
             }
         }
         
+        // 到站复核：围栏事件可能带着过期或很粗的定位到达，
+        // 直接响就会变成"人在高架上、隔一条街就被提醒"。
+        // 这里主动要一次新定位，用「实际距离 + 定位精度半径」判断是否真进圈。
+        guard await confirmArrival(of: reminder) else {
+            geofenceLogger.info("Arrival suppressed: accuracy check failed.")
+            return
+        }
+
         reminder.lastTriggeredAt = Date()
         ReminderStore.shared.save()
         NotificationService.shared.triggerNotification(for: reminder, alternativePlaceName: parsed.placeName,
@@ -118,6 +126,23 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         // 多站接力：这一站若是行程队列里的当前站，就自动切下一站
         // （终点则整程收尾：关灵动岛、停保活、恢复普通围栏）
         await TripRelayService.shared.relayIfNeeded(arrived: reminder.id)
+    }
+
+    /// 只在证据明确不足时否掉到站：宁可多响一次，也不漏站。
+    /// 判定式把定位精度本身算进容差，弱信号下自然更宽松。
+    private func confirmArrival(of reminder: Reminder) async -> Bool {
+        let target = CLLocation(latitude: reminder.latitude, longitude: reminder.longitude)
+        guard let fix = await LocationService.shared.arrivalFix() else { return true }
+        let age = Date().timeIntervalSince(fix.timestamp)
+        if age > 60 { return true }
+        if fix.horizontalAccuracy < 0 || fix.horizontalAccuracy > 250 { return true }
+        let slack = max(80, reminder.radius * 0.3) + fix.horizontalAccuracy
+        let distance = fix.distance(from: target)
+        if distance > reminder.radius + slack {
+            geofenceLogger.info("Arrival rejected: \(Int(distance))m from station, accuracy \pm\(Int(fix.horizontalAccuracy))m, radius \(Int(reminder.radius))m")
+            return false
+        }
+        return true
     }
 
     private func parse(_ identifier: String) -> (id: UUID, placeName: String?, coordinate: CLLocationCoordinate2D?) {

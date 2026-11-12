@@ -23,7 +23,9 @@ struct AlightingTripView: View {
     @AppStorage("trip.defaultRadius") private var defaultRadius: Double = 500
 
     @State private var routedETA: Int?
-    @State private var activeStopID: UUID?
+    /// 队列游标：当前是第几站（0 基）。用 AppStorage 而不是 @State ——
+    /// 后台接力时 TripRelayService 会改这个键，回到前台界面立刻就是新的一站。
+    @AppStorage("trip.currentIndex") private var currentIndex: Int = 0
     @State private var expandedList = false
     @State private var errorMessage: String?
 
@@ -145,7 +147,7 @@ struct AlightingTripView: View {
         guard let stop = nextStop else {
             return "添加第一个站点后，到站时手机会提醒你。"
         }
-        let progress = "第 1 / \(orderedStations.count) 站"
+        let progress = "第 \(queueIndex + 1) / \(orderedStations.count) 站"
         return "提醒半径 \(stop.radius.distanceText) · \(progress)"
     }
 
@@ -154,7 +156,7 @@ struct AlightingTripView: View {
     private var metrics: some View {
         MetricStrip(items: [
             .init(value: etaValue, unit: etaValue == "—" ? nil : "分钟", caption: "预计"),
-            .init(value: "\(orderedStations.count)", unit: "站", caption: "剩余"),
+            .init(value: "\(remainingStopCount)", unit: "站", caption: "剩余"),
             .init(value: radiusShortLabel, unit: nil, caption: "提醒半径"),
         ])
     }
@@ -313,7 +315,7 @@ struct AlightingTripView: View {
         }
         .contextMenu {
             Button {
-                withAnimation { activeStopID = stop.id }
+                withAnimation { currentIndex = max(0, index) }
             } label: {
                 Label("设为下一站", systemImage: "arrow.up.forward")
             }
@@ -475,8 +477,23 @@ struct AlightingTripView: View {
         return restored.isEmpty ? byDistance : restored
     }
 
+    /// 追踪中"下一站"由队列游标决定，未开始则取离你最近的那站。
+    private var queueIndex: Int {
+        guard isTracking else { return 0 }
+        let list = orderedStations
+        return list.indices.contains(currentIndex) ? currentIndex : 0
+    }
+
     private var nextStop: Reminder? {
-        orderedStations.first
+        let list = orderedStations
+        return list.indices.contains(queueIndex) ? list[queueIndex] : list.first
+    }
+
+    private var activeStopID: UUID? { nextStop?.id }
+
+    /// 还没走完的站数（含当前站）
+    private var remainingStopCount: Int {
+        max(0, orderedStations.count - queueIndex)
     }
 
     private func distance(to reminder: Reminder) -> Double {
@@ -516,7 +533,7 @@ struct AlightingTripView: View {
         guard let first = plan.first else { return }
 
         stationIDsRaw = plan.map { $0.id.uuidString }.joined(separator: ",")
-        activeStopID = first.id
+        currentIndex = 0
         isTracking = true
         // 静音保活：追踪期间让 App 不被挂起，围栏触发时才有机会跑语音与灵动岛接力
         AudioKeepAliveService.shared.startIfNeeded()
@@ -541,7 +558,7 @@ struct AlightingTripView: View {
 
     private func stopTracking() {
         isTracking = false
-        activeStopID = nil
+        currentIndex = 0
         AudioKeepAliveService.shared.stop()
         Task { await liveActivity.end() }
     }

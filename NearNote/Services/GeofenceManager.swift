@@ -18,7 +18,10 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
     }
 
     public func refresh(near location: CLLocation?) async {
+        // 行程里已经过站的站点不再占用围栏名额：iOS 总共只给 20 个，
+        // 坐过的站留在里面既浪费名额，回程再经过还会重复响。
         let active = ReminderStore.shared.fetchActive()
+            .filter { !TripRelayService.shared.isPassed($0.id) }
         let sorted = active.sorted { lhs, rhs in
             guard let location else { return lhs.createdAt > rhs.createdAt }
             return location.distance(from: CLLocation(latitude: lhs.latitude, longitude: lhs.longitude)) <
@@ -66,18 +69,18 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
     }
 
     nonisolated public func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
-        Task { @MainActor in GeofenceManager.shared.handle(region: region) }
+        Task { @MainActor in await GeofenceManager.shared.handle(region: region) }
     }
 
     nonisolated public func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
-        Task { @MainActor in GeofenceManager.shared.handle(region: region) }
+        Task { @MainActor in await GeofenceManager.shared.handle(region: region) }
     }
 
     nonisolated public func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
         geofenceLogger.error("Region monitoring failed: \(error.localizedDescription, privacy: .public)")
     }
 
-    private func handle(region: CLRegion) {
+    private func handle(region: CLRegion) async {
         let parsed = parse(region.identifier)
         guard let reminder = ReminderStore.shared.fetchReminder(withId: parsed.id), reminder.isEnabled, !reminder.isCompleted, !reminder.isArchived else { return }
         let settings = SettingsStore.shared
@@ -111,6 +114,10 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         ReminderStore.shared.save()
         NotificationService.shared.triggerNotification(for: reminder, alternativePlaceName: parsed.placeName,
                                                        alternativeCoordinate: parsed.coordinate)
+
+        // 多站接力：这一站若是行程队列里的当前站，就自动切下一站
+        // （终点则整程收尾：关灵动岛、停保活、恢复普通围栏）
+        await TripRelayService.shared.relayIfNeeded(arrived: reminder.id)
     }
 
     private func parse(_ identifier: String) -> (id: UUID, placeName: String?, coordinate: CLLocationCoordinate2D?) {

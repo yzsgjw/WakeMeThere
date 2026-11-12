@@ -78,6 +78,16 @@ struct PlansView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        onAdd()
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .tint(NearNoteStyle.accent)
+                    .accessibilityLabel("新建通勤项目")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         onMap?()
                     } label: {
                         Image(systemName: "map")

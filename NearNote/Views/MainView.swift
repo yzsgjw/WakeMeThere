@@ -44,7 +44,9 @@ struct MainView: View {
             }
         }
         .animation(.easeOut(duration: 0.18), value: cover == nil)
-        .sheet(item: $composer) { target in
+        // 用 fullScreenCover 而不是 sheet：sheet 进来时键盘会长在独立窗口里，
+        // 一旦命中区域错位就会出现"只有键盘能点"。整页推上来没有这个问题。
+        .fullScreenCover(item: $composer) { target in
             switch target {
             case .create(let place):
                 ReminderComposerView(initialPlace: place)

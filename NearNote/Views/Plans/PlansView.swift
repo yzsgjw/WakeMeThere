@@ -15,8 +15,8 @@ struct PlansView: View {
 
     var onAdd: () -> Void
     var onMap: (() -> Void)?
-
-    @State private var editingReminder: Reminder?
+    /// 编辑交给 MainView 统一呈现（全 App 只保留一个 sheet，避免命中区域错位）
+    var onEdit: ((UUID) -> Void)?
 
     private var plans: [Reminder] {
         reminders.filter { !$0.isArchived && !$0.isCompleted }
@@ -60,7 +60,17 @@ struct PlansView: View {
                         .padding(.horizontal, NearNoteStyle.gutter)
                         .padding(.top, 12)
                         .padding(.bottom, 8)
-                        .background(.ultraThinMaterial)
+                        // 材质会把底下的按钮压成半透明，看起来像"点不动"；用实心底
+                        .background(
+                            LinearGradient(
+                                colors: [NearNoteStyle.canvas.opacity(0), NearNoteStyle.canvas.opacity(0.96), NearNoteStyle.canvas],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .overlay(alignment: .top) {
+                                Rectangle().fill(NearNoteStyle.hairline).frame(height: 1)
+                            }
+                        )
                 }
             }
             .navigationTitle("通勤项目")
@@ -76,9 +86,6 @@ struct PlansView: View {
                     .tint(NearNoteStyle.accent)
                     .accessibilityLabel("打开地图")
                 }
-            }
-            .sheet(item: $editingReminder) { reminder in
-                ReminderComposerView(reminder: reminder)
             }
         }
     }
@@ -178,10 +185,10 @@ struct PlansView: View {
                 .strokeBorder(NearNoteStyle.hairline, lineWidth: 1)
         }
         .contentShape(Rectangle())
-        .onTapGesture { editingReminder = plan }
+        .onTapGesture { onEdit?(plan.id) }
         .contextMenu {
             Button {
-                editingReminder = plan
+                onEdit?(plan.id)
             } label: {
                 Label("编辑", systemImage: "slider.horizontal.3")
             }
@@ -213,6 +220,12 @@ struct PlansView: View {
                 .font(NearNoteStyle.Typeface.body)
                 .foregroundStyle(NearNoteStyle.textSecondary)
                 .multilineTextAlignment(.center)
+
+            // 空态里也放一个入口：底部那条按钮万一被系统底栏压住，
+            // 这里的按钮照样点得开。
+            PrimaryActionButton(title: "新建通勤项目", symbol: "plus") { onAdd() }
+                .padding(.horizontal, 30)
+                .padding(.top, 8)
         }
         .padding(.horizontal, 30)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

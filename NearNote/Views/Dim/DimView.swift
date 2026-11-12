@@ -12,6 +12,9 @@ struct DimView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var locationService: LocationService
 
+    /// 作为 App 内覆盖层呈现时由外面关
+    var onClose: (() -> Void)? = nil
+
     @State private var previousBrightness: CGFloat?
     @State private var now = Date()
 
@@ -63,7 +66,9 @@ struct DimView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .contentShape(Rectangle())
-        .onTapGesture { dismiss() }
+        .onTapGesture {
+            if let onClose { onClose() } else { dismiss() }
+        }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .onAppear { dim() }

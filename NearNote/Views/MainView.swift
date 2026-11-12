@@ -2,49 +2,55 @@ import SwiftUI
 
 struct MainView: View {
     @State private var selectedTab = 0
-    @State private var showComposer = false
     @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding = false
-    @State private var composerPlace: Place?
-    // 只留一个 fullScreenCover：同一层级挂两个 presentation 修饰器时，
-    // 弹出的 sheet 会拿到错误的点击区域（键盘能点、别的全点不动），这是个真机上会复现的坑。
+
+    /// 全 App 只剩这一个 presentation：
+    /// 同一层级挂两个 presentation 修饰器（sheet + fullScreenCover）时，
+    /// 弹出的表单会拿到错的命中区域 —— 键盘能点、别的全点不动，或者干脆点不开。
+    /// 所以到站全屏页 / 极暗页改成 App 内覆盖层，只有编辑页还是 sheet。
+    @State private var composer: ComposerTarget?
     @State private var cover: AppCover?
 
     var body: some View {
-        Group {
+        ZStack {
             if hasSeenOnboarding {
                 TabView(selection: $selectedTab) {
                     // 首页 = 追踪页：一屏看到「还有多少米」，灵动岛和静音保活也从这里起
-                    AlightingTripView(onAdd: { showComposer = true })
+                    AlightingTripView(onAdd: { composer = .create(nil) })
                         .tabItem { Label("追踪", systemImage: "location.north.line.fill") }.tag(0)
-                    PlansView(onAdd: { showComposer = true }, onMap: { selectedTab = 2 })
+                    PlansView(
+                        onAdd: { composer = .create(nil) },
+                        onMap: { selectedTab = 2 },
+                        onEdit: { composer = .edit($0) }
+                    )
                         .tabItem { Label("项目", systemImage: "square.stack.3d.up.fill") }.tag(1)
-                    MapView(onAdd: { place in
-                        composerPlace = place
-                        showComposer = true
-                    })
+                    MapView(
+                        onAdd: { place in composer = .create(place) },
+                        onEdit: { composer = .edit($0) }
+                    )
                         .tabItem { Label("地图", systemImage: "map.fill") }.tag(2)
                     SettingsView()
                         .tabItem { Label("设置", systemImage: "gearshape.fill") }.tag(3)
                 }
                 .tint(NearNoteStyle.accent)
-                // sheet 挂在 TabView 上，别和外面的 fullScreenCover 挂在同一层：
-                // 同一层挂两个 presentation 修饰器时，sheet 里的键盘会拿到错的点击区域。
-                .sheet(isPresented: $showComposer, onDismiss: { composerPlace = nil }) {
-                    ReminderComposerView(initialPlace: composerPlace)
-                }
             } else {
                 OnboardingView(hasSeenOnboarding: $hasSeenOnboarding)
             }
+
+            if let cover {
+                coverView(cover)
+                    .transition(.opacity)
+                    .zIndex(2)
+            }
         }
-        .fullScreenCover(item: $cover) { target in
+        .animation(.easeOut(duration: 0.18), value: cover == nil)
+        .sheet(item: $composer) { target in
             switch target {
-            case .dim:
-                DimView()
-            case .arrival(let id):
+            case .create(let place):
+                ReminderComposerView(initialPlace: place)
+            case .edit(let id):
                 if let reminder = ReminderStore.shared.fetchReminder(withId: id) {
-                    ArrivalFullScreenView(reminder: reminder)
-                } else {
-                    NearNoteBackground()
+                    ReminderComposerView(reminder: reminder)
                 }
             }
         }
@@ -69,19 +75,39 @@ struct MainView: View {
         }
         .preferredColorScheme(.dark)
     }
+
+    @ViewBuilder
+    private func coverView(_ cover: AppCover) -> some View {
+        switch cover {
+        case .dim:
+            DimView(onClose: { self.cover = nil })
+        case .arrival(let id):
+            if let reminder = ReminderStore.shared.fetchReminder(withId: id) {
+                ArrivalFullScreenView(reminder: reminder, onClose: { self.cover = nil })
+            } else {
+                NearNoteBackground().onTapGesture { self.cover = nil }
+            }
+        }
+    }
 }
 
-/// fullScreenCover(item:) 的载荷：到站全屏页 / 极暗页，共用一个覆盖层
-private enum AppCover: Identifiable {
-    case arrival(UUID)
-    case dim
+/// 编辑页的两个入口：新建（可能带着地图选好的地点）/ 编辑已有项目
+private enum ComposerTarget: Identifiable {
+    case create(Place?)
+    case edit(UUID)
 
     var id: String {
         switch self {
-        case .arrival(let uuid): return "arrival-\(uuid.uuidString)"
-        case .dim: return "dim"
+        case .create: return "create"
+        case .edit(let uuid): return "edit-\(uuid.uuidString)"
         }
     }
+}
+
+/// App 内全屏覆盖层：到站页 / 极暗页
+private enum AppCover: Equatable {
+    case arrival(UUID)
+    case dim
 }
 
 #Preview { MainView().environmentObject(LocationService.shared).environmentObject(NotificationService.shared) }

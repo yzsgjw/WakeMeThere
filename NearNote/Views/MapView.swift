@@ -4,10 +4,11 @@ import MapKit
 
 struct MapView: View {
     var onAdd: (Place?) -> Void = { _ in }
+    /// 编辑同样交给 MainView 统一呈现
+    var onEdit: ((UUID) -> Void)? = nil
     @Query private var reminders: [Reminder]
     @EnvironmentObject private var locationService: LocationService
     @State private var position: MapCameraPosition = .automatic
-    @State private var selected: Reminder?
     @State private var showLocationPicker = false
 
     private var activeReminders: [Reminder] {
@@ -31,7 +32,6 @@ struct MapView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .tint(NearNoteStyle.accent)
-            .sheet(item: $selected) { ReminderComposerView(reminder: $0) }
             .fullScreenCover(isPresented: $showLocationPicker) {
                 LocationPickerView(onPlaceSelected: { place in onAdd(place) })
             }
@@ -55,7 +55,7 @@ struct MapView: View {
 
                 ForEach(activeReminders) { reminder in
                     Annotation(reminder.placeName, coordinate: reminder.coordinate) {
-                        Button { selected = reminder } label: {
+                        Button { onEdit?(reminder.id) } label: {
                             PlaceIcon(category: reminder.category, size: 34)
                                 .overlay {
                                     Circle().stroke(.white.opacity(0.75), lineWidth: 1.2)
@@ -165,7 +165,7 @@ struct MapView: View {
                         }
                         .buttonStyle(.plain)
 
-                        Button { selected = reminder } label: {
+                        Button { onEdit?(reminder.id) } label: {
                             Image(systemName: "ellipsis")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(NearNoteStyle.textSecondary)

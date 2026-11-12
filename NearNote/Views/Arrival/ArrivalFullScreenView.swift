@@ -16,6 +16,12 @@ struct ArrivalFullScreenView: View {
     @Environment(\.dismiss) private var dismiss
 
     let reminder: Reminder
+    /// 作为 App 内覆盖层呈现时由外面关；用 sheet 呈现时留空走 dismiss
+    var onClose: (() -> Void)? = nil
+
+    private func close() {
+        if let onClose { onClose() } else { dismiss() }
+    }
 
 
     private var stationName: String {
@@ -106,7 +112,7 @@ struct ArrivalFullScreenView: View {
                     }
                     .buttonStyle(PressableStyle())
 
-                    Button("关闭") { dismiss() }
+                    Button("关闭") { close() }
                         .font(NearNoteStyle.Typeface.label)
                         .foregroundStyle(NearNoteStyle.textTertiary)
                         .padding(.top, 2)
@@ -132,13 +138,13 @@ struct ArrivalFullScreenView: View {
         let location = LocationService.shared.currentLocation
         Task { await GeofenceManager.shared.refresh(near: location) }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        dismiss()
+        close()
     }
 
     private func snooze() {
         reminder.snoozedUntil = Date().addingTimeInterval(30 * 60)
         try? modelContext.save()
         AlarmPlaybackService.shared.stop()
-        dismiss()
+        close()
     }
 }

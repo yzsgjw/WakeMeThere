@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import CoreLocation
 
 /// 极暗页：锁屏卡片上点「调暗」进来。
 ///

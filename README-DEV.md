@@ -7,7 +7,7 @@
 
 ## 1. 当前状态
 
-底座已克隆并完成第一阶段改造，尚未验证编译（需要推到 GitHub 跑一次 CI）。
+底座已克隆并完成改造，**编译已在 GitHub Actions 上验证通过**（`macos-15` + XcodeGen，产物是 9.45MB 未签名 ipa，内含 Widget 扩展；build.log 零警告）。
 
 | 改造项 | 说明 |
 |---|---|
@@ -31,17 +31,18 @@
 
 ### 2.1 一次性配置
 
-```bash
-cd "G:/My-soft-TRAE/万能对话区/nearnotes/app"
+**已经配好了**，仓库是 https://github.com/yzsgjw/WakeMeThere ，`origin` 指向它、`upstream` 指向原作者仓库。
 
-# 改成你自己的身份
-git config user.name  "你的名字"
-git config user.email "你的邮箱"
+当初踩的两个坑，换机器重配时会再遇到，记在这里：
 
-# 指向你自己的空仓库（先在 GitHub 网页上建好，不要勾选 README）
-git remote add origin https://github.com/你的用户名/仓库名.git
-git branch -M main
-```
+1. **token 必须有 `workflow` scope**。只有 `repo` 时 GitHub 拒绝推送 `.github/workflows/` 下任何文件，报
+   `refusing to allow a Personal Access Token to create or update workflow ... without workflow scope`。
+   去 https://github.com/settings/tokens 勾上 `workflow` 再 push。
+2. **浅克隆推不上去**。`--depth 1` 克隆出来的仓库 push 时报
+   `remote: fatal: did not receive expected object ...` / `remote unpack failed`。
+   先 `git fetch --unshallow upstream` 补全历史（约 1 分钟）再推。
+3. 仓库创建时勾了 README 的话，远端会有一个 `Initial commit`，和本地历史无关；用
+   `git push --force-with-lease=main:<远端sha> ...` 覆盖掉即可（两边历史无共同祖先，`git pull` 会拒绝合并）。
 
 原始项目保留在 `upstream` 远端，方便以后同步作者的上游修复：
 
@@ -70,6 +71,16 @@ git push -u origin main
 - ❌ 红色 → 下载 `build-log-<序号>`，里面是完整 `xcodebuild` 日志。把这个日志贴给我，我按报错改
 
 **这是唯一的编译反馈通道**，所以改动要小步提交，不要一次堆几百行再看结果。
+
+几个读日志的常识：
+
+- 命令带 `-quiet`，**成功时 `build.log` 是空的**（空 ≠ 出错）。判断成败看绿色对勾，不要 grep 文件内容。
+- 失败时 `build.log` 里只有 `error:` / `warning:` 行，定位靠 `文件:行:列`，比在 Xcode 里翻更快。
+- 只改 `.md` / `Docs/` / `site/` 不会触发构建（`paths-ignore` 已配）。
+- 一次成功构建 ≈ 2 分钟（`macos-15` 冷启动 + XcodeGen + 全量 swiftc）。
+
+历史验证记录：run [#43181875503](https://github.com/yzsgjw/WakeMeThere/actions/runs/43181875503) 首次全绿；
+随后修掉唯一一条警告（widget 扩展版本号 `1.0` 与主 App `0.1.0` 不一致）后 run `43182391020` 零警告。
 
 ---
 

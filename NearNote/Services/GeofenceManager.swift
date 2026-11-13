@@ -12,6 +12,12 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
     private let placeSearch = PlaceSearchService()
     private var lastInsideCheck: Date?
     private var lastAcceptedFix: CLLocation?
+    /// 下一次圈内自检最早什么时候可以跑（自适应：越近越勤，10 秒起步）
+    private var nextCheckInterval: TimeInterval = 10
+    /// 冷却/已到过这类"被挡下"的提示，60 秒内只记一条，免得 10 秒一次把日志刷满
+    private var lastBlockedNoteAt: Date?
+    /// 到站时 App 不在前台 → 记下来，等用户解锁/回到前台再补弹全屏页
+    @Published public private(set) var pendingArrivalID: UUID?
     @Published public private(set) var monitoredReminderIds: Set<UUID> = []
     /// 系统实际接受的围栏数量（不是我们想注册的数量）。
     /// 界面拿它告诉用户「现在到底有没有在盯着」——注册失败时这里会是 0。
@@ -182,11 +188,11 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         // 但被挡掉时必须留痕，否则就是"点了半天没反应，看不出为什么"。
         if let snoozedUntil = reminder.snoozedUntil, snoozedUntil > Date() {
             let minutes = max(1, Int(snoozedUntil.timeIntervalSinceNow / 60))
-            note("\(reminder.displayTitle) 已推迟，还要等 \(minutes) 分钟")
+            noteBlocked("\(reminder.displayTitle) 已推迟，还要等 \(minutes) 分钟")
             return false
         }
         if reminder.arrivedToday {
-            note("\(reminder.displayTitle) 今天已经到过，今天不再重复提醒（要再测一次点「重置冷却」）")
+            noteBlocked("\(reminder.displayTitle) 今天已经到过，今天不再重复提醒（要再测一次点「重置冷却」）")
             return false
         }
         if let last = reminder.lastTriggeredAt {
@@ -194,7 +200,7 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
             let window = Double(settings.cooldownMinutes * 60)
             if elapsed < window {
                 let left = max(1, Int((window - elapsed) / 60))
-                note("\(reminder.displayTitle) 还在冷却，剩 \(left) 分钟（可在体检卡里一键清除）")
+                noteBlocked("\(reminder.displayTitle) 还在冷却，剩 \(left) 分钟（可在体检卡里一键清除）")
                 return false
             }
         }
@@ -217,9 +223,15 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         NotificationService.shared.triggerNotification(for: reminder, alternativePlaceName: alternativePlaceName,
                                                        alternativeCoordinate: alternativeCoordinate)
 
-        // App 正开着时，直接把全屏到站页盖上来（锁屏/后台做不到，只能靠通知点进来）
-        if reminder.fullScreenOnArrival, UIApplication.shared.applicationState == .active {
-            NotificationCenter.default.post(name: .arrivalOpened, object: reminder.id)
+        // App 正开着 → 立刻盖全屏页；锁屏/后台 → 先记下，
+        // 用户解锁（回到前台）那一刻补弹，不然他只听到铃声、找不到界面。
+        if reminder.fullScreenOnArrival {
+            if UIApplication.shared.applicationState == .active {
+                NotificationCenter.default.post(name: .arrivalOpened, object: reminder.id)
+            } else {
+                pendingArrivalID = reminder.id
+                note("到站时 App 不在前台，已记下待办：解锁后补弹全屏页")
+            }
         }
 
         // 多站接力：这一站若是行程队列里的当前站，就自动切下一站
@@ -236,13 +248,25 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
     // 所以每次刷新围栏、拿到新定位、App 回到前台，都主动算一遍当前距离。
     public func checkInsideFences(force: Bool = false) async {
         let now = Date()
-        if !force, let last = lastInsideCheck, now.timeIntervalSince(last) < 60 { return }
+        if !force, let last = lastInsideCheck, now.timeIntervalSince(last) < nextCheckInterval { return }
         lastInsideCheck = now
         guard let fix = await LocationService.shared.arrivalFix(timeout: 3, maxAge: 120) else { return }
         guard fix.horizontalAccuracy >= 0 else { return }
         guard isPlausible(fix) else { return }
 
         let candidates = ReminderStore.shared.fetchActive().filter { $0.triggerOnArrival }
+
+        // 先只算距离（不做资格判定，避免"冷却中"的提示每 10 秒刷一次日志），
+        // 用最近的那个决定下一次多久之后再查。
+        var nearestRemaining = Double.greatestFiniteMagnitude
+        for reminder in candidates {
+            let target = CLLocation(latitude: reminder.latitude, longitude: reminder.longitude)
+            let remaining = fix.distance(from: target) - max(100, reminder.radius)
+            nearestRemaining = min(nearestRemaining, max(0, remaining))
+        }
+        let speed = max(0, fix.speed)
+        nextCheckInterval = adaptiveInterval(remainingToNearest: nearestRemaining, speed: speed)
+
         for reminder in candidates where isEligible(reminder) {
             let target = CLLocation(latitude: reminder.latitude, longitude: reminder.longitude)
             let distance = fix.distance(from: target)
@@ -266,6 +290,29 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         }
     }
 
+    /// 自适应巡检节奏。
+    ///
+    /// 固定 60 秒的问题：在离站还有 4 公里时问一次是好主意，可在离站 80 米时问一次就是在赌运气——
+    /// 地铁 80 米只要十几秒。所以这里按「还有多久到」倒推：
+    /// 剩余时间越长，间隔增长得越平缓（平方根曲线，不是线性），10 秒起步、60 秒封顶；
+    /// 站着不动（候车、堵着）不浪费电，直接退到 60 秒。
+    private func adaptiveInterval(remainingToNearest: Double, speed: Double) -> TimeInterval {
+        guard speed >= 0.7 else { return 60 }
+        let secondsToArrival = remainingToNearest / max(speed, 0.7)
+        // 取「还要多久到」的四分之一当巡检间隔：5 秒起步、60 秒封顶。
+        // 这条曲线本身就是非线性的——间隔正比于 ETA，而 ETA 随距离的变化在终点前会陡降，
+        // 于是等效于「越接近越密集」：地铁 80m 约 5s 一次，剩 1km 约 25s 一次，4km 外 60s 一次。
+        return min(60, max(5, (secondsToArrival / 4).rounded()))
+    }
+
+    /// 冷却/已到过这类"被挡下"的原因，60 秒内只记一条，否则 10 秒一次的巡检会把日志刷爆。
+    private func noteBlocked(_ text: String) {
+        let now = Date()
+        if let last = lastBlockedNoteAt, now.timeIntervalSince(last) < 60 { return }
+        lastBlockedNoteAt = now
+        note(text)
+    }
+
     /// 坐标漂移过滤：地铁里 GPS 掉到 Wi-Fi 定位时，坐标会整条街地瞬移。
     /// 两次定位之间换算出的速度超过 60 m/s（216 km/h）就判定为脏点，直接丢弃。
     private func isPlausible(_ fix: CLLocation) -> Bool {
@@ -281,6 +328,12 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
     }
 
     /// 一键清除冷却与推迟。体检卡上的「重置冷却」用，专门为了"我现在就要测一次"。
+    /// 取出「到站时没来得及弹」的全屏页任务（取一次就清空）。
+    public func consumePendingArrival() -> UUID? {
+        defer { pendingArrivalID = nil }
+        return pendingArrivalID
+    }
+
     public func clearCooldowns() {
         for reminder in ReminderStore.shared.fetchAll() {
             reminder.lastTriggeredAt = nil

@@ -255,7 +255,7 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
     }
 
     private func startVibrationLoop() {
-        guard pendingVibration else { return }
+        guard pendingVibration, SettingsStore.shared.vibrationMasterEnabled else { return }
         vibrateIfNeeded()
         // 震动节奏来自设置（快 0.7s / 中 1.8s / 慢 3.5s）
         let interval = SettingsStore.shared.vibrationSpeed.interval
@@ -264,7 +264,8 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
-                    guard let self, self.isAlarming, self.pendingVibration else { return }
+                    guard let self, self.isAlarming, self.pendingVibration,
+                          SettingsStore.shared.vibrationMasterEnabled else { return }
                     AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
                 }
             }

@@ -15,6 +15,8 @@ struct ArrivalFullScreenView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    @StateObject private var settings = SettingsStore.shared
+
     let reminder: Reminder
     /// 作为 App 内覆盖层呈现时由外面关；用 sheet 呈现时留空走 dismiss
     var onClose: (() -> Void)? = nil
@@ -94,9 +96,42 @@ struct ArrivalFullScreenView: View {
                     }
 
                     Button {
+                        AlarmPlaybackService.shared.stopAlarm()
+                    } label: {
+                        Text("停止响铃和震动")
+                            .font(NearNoteStyle.Typeface.cta)
+                            .foregroundStyle(NearNoteStyle.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(
+                                NearNoteStyle.surface,
+                                in: RoundedRectangle(cornerRadius: NearNoteStyle.buttonRadius, style: .continuous)
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: NearNoteStyle.buttonRadius, style: .continuous)
+                                    .strokeBorder(NearNoteStyle.hairlineStrong, lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(PressableStyle())
+
+                    if reminder.vibrationEnabled {
+                        Button {
+                            reminder.vibrationEnabled = false
+                            try? modelContext.save()
+                            AlarmPlaybackService.shared.stopAlarm()
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        } label: {
+                            Text("这个项目以后不震动")
+                                .font(NearNoteStyle.Typeface.label)
+                                .foregroundStyle(NearNoteStyle.textTertiary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
                         snooze()
                     } label: {
-                        Text("30 分钟后再提醒")
+                        Text("\(settings.snoozeMinutes) 分钟后再提醒")
                             .font(NearNoteStyle.Typeface.cta)
                             .foregroundStyle(NearNoteStyle.textPrimary)
                             .frame(maxWidth: .infinity)
@@ -135,17 +170,17 @@ struct ArrivalFullScreenView: View {
     /// 「我到了」= 结束这一趟的响铃。
     /// 通勤项目是每天复用的，绝不能 markDone —— 那会让卡片从列表里消失
     /// （用户报的「到达后项目就不见了」就是这个）。
-    /// 这里只把项目冷却 30 分钟，同时保留在列表里，明天照常生效。
+    /// 这里只把项目推后 N 分钟（设置里的「推迟时间」），同时保留在列表里，明天照常生效。
     private func complete() {
         AlarmPlaybackService.shared.stop()
-        reminder.snoozedUntil = Date().addingTimeInterval(30 * 60)
+        reminder.snoozedUntil = Date().addingTimeInterval(Double(settings.snoozeMinutes) * 60)
         try? modelContext.save()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         close()
     }
 
     private func snooze() {
-        reminder.snoozedUntil = Date().addingTimeInterval(30 * 60)
+        reminder.snoozedUntil = Date().addingTimeInterval(Double(settings.snoozeMinutes) * 60)
         try? modelContext.save()
         AlarmPlaybackService.shared.stop()
         close()

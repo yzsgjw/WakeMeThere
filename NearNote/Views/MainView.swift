@@ -64,6 +64,12 @@ struct MainView: View {
                 DiagnosticsLog.shared.record("回到前台，重新核对围栏", tag: "围栏")
                 await LocationService.shared.updateMonitoredRegions()
             }
+            // 通知动作标题里带着推迟分钟数，回到前台重建一次分类，让设置改动立刻生效
+            NotificationService.shared.setupCategories()
+            // 到站那一刻如果 App 在锁屏/后台，这里补弹全屏页
+            if let pending = GeofenceManager.shared.consumePendingArrival() {
+                cover = .arrival(pending)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .arrivalOpened)) { note in
             guard let id = note.object as? UUID else { return }

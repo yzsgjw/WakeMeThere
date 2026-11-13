@@ -70,6 +70,12 @@ public final class SettingsStore: ObservableObject {
     @AppStorage("quietHoursEndMinutes") public var quietHoursEndMinutes = 7 * 60
     @AppStorage("notificationCooldownMinutes") public var cooldownMinutes = 30
     @AppStorage("vibrationSpeed") public var vibrationSpeedRaw = VibrationSpeed.medium.rawValue
+    /// 「稍后再提醒」推迟多少分钟。可选项固定为 3/5/10/15，默认 5。
+    @AppStorage("snoozeMinutes") public var snoozeMinutes = 5
+    public static let snoozePresets = [3, 5, 10, 15]
+
+    /// 设置里的「震动总开关」：关掉之后所有项目都不再震动（项目内部的开关仍可单独覆盖）
+    @AppStorage("vibrationMasterEnabled") public var vibrationMasterEnabled = true
     @AppStorage("shareAnonymousUsage") public var shareAnonymousUsage = false
     @AppStorage("includeDiagnosticsInReports") public var includeDiagnosticsInReports = true
     @AppStorage("recentPlacesData") private var recentPlacesData = Data()

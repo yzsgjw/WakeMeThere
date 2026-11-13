@@ -136,6 +136,15 @@ struct SettingsView: View {
                     Text(settings.vibrationSpeed.detail)
                         .font(NearNoteStyle.Typeface.micro)
                         .foregroundStyle(NearNoteStyle.textTertiary)
+
+                    Toggle("震动", isOn: $settings.vibrationMasterEnabled)
+
+                    Picker("推迟时间", selection: $settings.snoozeMinutes) {
+                        ForEach(SettingsStore.snoozePresets, id: \.self) { minutes in
+                            Text("\(minutes) 分钟").tag(minutes)
+                        }
+                    }
+                    .pickerStyle(.segmented)
                 } header: {
                     Text("提醒")
                 } footer: {

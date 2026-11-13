@@ -48,7 +48,8 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
 
     public func setupCategories() {
         let done = UNNotificationAction(identifier: "DONE_ACTION", title: "已完成", options: [])
-        let snooze = UNNotificationAction(identifier: "SNOOZE_ACTION", title: "30 分钟后再提醒", options: [])
+        let minutes = SettingsStore.shared.snoozeMinutes
+        let snooze = UNNotificationAction(identifier: "SNOOZE_ACTION", title: "\(minutes) 分钟后再提醒", options: [])
         let navigate = UNNotificationAction(identifier: "NAVIGATE_ACTION", title: "导航", options: [.foreground])
         let wait = UNNotificationAction(identifier: "WAIT_ORIGINAL_ACTION", title: "仍等到原地点", options: [])
         center.setNotificationCategories([
@@ -164,11 +165,11 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
                 // 项目是每天复用的通勤项：到站只结束"这一趟的声音"，
                 // 不能 markDone，否则卡片会从列表里消失（用户抱怨的正是这个）。
                 AlarmPlaybackService.shared.stop()
-                reminder.snoozedUntil = Date().addingTimeInterval(30 * 60)
+                reminder.snoozedUntil = Date().addingTimeInterval(Double(SettingsStore.shared.snoozeMinutes) * 60)
             case "WAIT_ORIGINAL_ACTION":
                 reminder.alternativesDisabled = true
             case "SNOOZE_ACTION":
-                reminder.snoozedUntil = Date().addingTimeInterval(30 * 60)
+                reminder.snoozedUntil = Date().addingTimeInterval(Double(SettingsStore.shared.snoozeMinutes) * 60)
                 scheduleSnooze(reminder)
             case UNNotificationDefaultActionIdentifier:
                 // 点通知本身 → 打开 App 内的到站全屏页
@@ -203,7 +204,7 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
         content.categoryIdentifier = "REMINDER_CATEGORY"
         content.userInfo = ["REMINDER_ID": reminder.id.uuidString, "LATITUDE": reminder.latitude, "LONGITUDE": reminder.longitude]
         center.add(UNNotificationRequest(identifier: "\(reminder.id)-snooze", content: content,
-                                         trigger: UNTimeIntervalNotificationTrigger(timeInterval: 30 * 60, repeats: false)))
+                                         trigger: UNTimeIntervalNotificationTrigger(timeInterval: Double(SettingsStore.shared.snoozeMinutes) * 60, repeats: false)))
     }
 
     private func secondsUntilQuietHoursEnd() -> TimeInterval {

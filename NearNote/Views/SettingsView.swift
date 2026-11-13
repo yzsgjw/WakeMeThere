@@ -7,6 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject private var locationService: LocationService
     @EnvironmentObject private var notificationService: NotificationService
     @StateObject private var settings = SettingsStore.shared
+    @StateObject private var diagnostics = DiagnosticsLog.shared
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \SavedPlace.sortOrder) private var allSavedPlaces: [SavedPlace]
     @State private var showPermissions = false
@@ -190,6 +191,22 @@ struct SettingsView: View {
                     Text("隐私与诊断")
                 } footer: {
                     Text("用量数据里不会包含提醒文字、收藏地点或坐标；本版本没有配置任何上报端点，数据不会外发。")
+                }
+
+                Section {
+                    NavigationLink {
+                        DiagnosticsLogView()
+                    } label: {
+                        SettingsRow(
+                            symbol: "doc.text.magnifyingglass",
+                            title: "诊断日志",
+                            value: diagnostics.isEmpty ? "空" : "\(diagnostics.entries.count) 条"
+                        )
+                    }
+                } header: {
+                    Text("诊断")
+                } footer: {
+                    Text("到站没响的时候先看这里：围栏注册了几个、资格判定被谁挡下、复核算出多少米、通知有没有发出去，都按时间记着。")
                 }
 
                 Section("支持") {

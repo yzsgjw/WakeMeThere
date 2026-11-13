@@ -24,8 +24,26 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
         Task {
             let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
             isAuthorized = granted
+            DiagnosticsLog.shared.record(granted ? "通知权限已开启" : "通知权限被拒绝（不会弹任何提醒）", tag: "通知")
             completion(granted)
         }
+    }
+
+    /// 精度太差时的降级：只发一条不响铃的静默通知。
+    /// 这时候"在圈里"这个结论并不可信，响铃反而会误报，但也不能什么都不留。
+    public func postSilent(for reminder: Reminder) {
+        let content = UNMutableNotificationContent()
+        let stationName = reminder.placeName.isEmpty ? reminder.title : reminder.placeName
+        content.title = "接近 \(stationName)"
+        content.body = "定位信号偏弱，先提示一下；到得更准时会再响铃。"
+        content.sound = nil
+        content.interruptionLevel = .active
+        content.threadIdentifier = "arrival-alerts"
+        content.userInfo = ["REMINDER_ID": reminder.id.uuidString]
+        let request = UNNotificationRequest(identifier: "silent-\(reminder.id.uuidString)-\(Int(Date().timeIntervalSince1970))",
+                                            content: content, trigger: nil)
+        center.add(request)
+        DiagnosticsLog.shared.record("已发静默通知：\(stationName)", tag: "通知")
     }
 
     public func setupCategories() {
@@ -63,6 +81,7 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
             content.categoryIdentifier = "REMINDER_CATEGORY"
         }
         content.sound = arrivalSound(for: reminder.chime)
+        DiagnosticsLog.shared.record("已发通知：\(content.title)（铃声 \(reminder.chime.label)）", tag: "通知")
         // 时间敏感通知：无声穿透「专注模式」，不需要任何特殊审批（Critical Alerts 才需要）。
         content.interruptionLevel = .timeSensitive
         content.threadIdentifier = "arrival-alerts"

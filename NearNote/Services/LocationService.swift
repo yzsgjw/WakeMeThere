@@ -16,6 +16,21 @@ public final class LocationService: NSObject, ObservableObject, CLLocationManage
 
     public var monitoredReminderIds: Set<UUID> { GeofenceManager.shared.monitoredReminderIds }
 
+    /// 诊断日志里用的中文描述
+    public var authorizationText: String {
+        switch authorizationStatus {
+        case .authorizedAlways: return "始终"
+        case .authorizedWhenInUse: return "使用期间"
+        case .denied: return "已拒绝"
+        case .restricted: return "被系统限制"
+        case .notDetermined: return "尚未选择"
+        @unknown default: return "未知"
+        }
+    }
+
+    /// 诊断用：定位采样计数（每 30 次写一条日志，避免刷屏）
+    private var sampleCount = 0
+
     private override init() {
         authorizationStatus = manager.authorizationStatus
         super.init()
@@ -111,7 +126,11 @@ public final class LocationService: NSObject, ObservableObject, CLLocationManage
 
     nonisolated public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
+            let previous = LocationService.shared.authorizationStatus
             LocationService.shared.authorizationStatus = manager.authorizationStatus
+            if previous != manager.authorizationStatus {
+                DiagnosticsLog.shared.record("定位权限变为 \(LocationService.shared.authorizationText)", tag: "定位")
+            }
             if manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse {
                 manager.requestLocation()
             }
@@ -124,6 +143,13 @@ public final class LocationService: NSObject, ObservableObject, CLLocationManage
         Task { @MainActor in
             let service = LocationService.shared
             service.currentLocation = location
+            service.sampleCount += 1
+            if service.sampleCount % 30 == 1 {
+                DiagnosticsLog.shared.record(
+                    String(format: "定位 %.5f,%.5f 精度 ±%.0fm", location.coordinate.latitude,
+                           location.coordinate.longitude, location.horizontalAccuracy),
+                    tag: "定位")
+            }
             await LiveActivityService.shared.update(for: location)
             // 每次拿到新定位都顺手做一次「是不是已经在圈内」的自检（内部 60s 节流）
             await GeofenceManager.shared.checkInsideFences()

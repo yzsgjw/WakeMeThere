@@ -205,6 +205,10 @@ struct PlansView: View {
                     healthButton("开启通知") { notifications.requestPermission() }
                 }
                 healthButton("试响一下") { testArrival() }
+                healthButton("重置冷却") {
+                    geofence.clearCooldowns()
+                    Task { await locationService.updateMonitoredRegions() }
+                }
                 Spacer()
             }
         }
@@ -409,6 +413,11 @@ struct PlansView: View {
                 onEdit?(plan.id)
             } label: {
                 Label("编辑", systemImage: "slider.horizontal.3")
+            }
+            Button {
+                notifications.testArrival(for: plan)
+            } label: {
+                Label("立即测试", systemImage: "bell.badge")
             }
             Button {
                 setEnabled(plan, !plan.isEnabled)

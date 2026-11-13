@@ -12,12 +12,14 @@ import Foundation
 
 /// 内置到 bundle 的三首铃声。文件名就是通知里 `UNNotificationSound` 用的名字。
 public enum AlarmChime: String, CaseIterable, Sendable {
+    case radar
     case classic
     case soft
     case bell
 
     public var label: String {
         switch self {
+        case .radar: return "闹钟"
         case .classic: return "标准"
         case .soft: return "轻铃"
         case .bell: return "钟声"
@@ -26,6 +28,7 @@ public enum AlarmChime: String, CaseIterable, Sendable {
 
     public var fileName: String {
         switch self {
+        case .radar: return "ChimeAlarm.wav"
         case .classic: return "AlarmChime.wav"
         case .soft: return "ChimeSoft.wav"
         case .bell: return "ChimeBell.wav"
@@ -46,7 +49,7 @@ public enum AlarmChime: String, CaseIterable, Sendable {
     /// 当前选中的铃声。键 `alarm.chime` 与 App 侧共用。
     public static var current: AlarmChime {
         let raw = UserDefaults.standard.string(forKey: TripKeys.chime) ?? ""
-        return AlarmChime(rawValue: raw) ?? .classic
+        return AlarmChime(rawValue: raw) ?? .radar
     }
 }
 

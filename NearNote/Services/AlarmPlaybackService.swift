@@ -49,7 +49,8 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
         super.init()
         synthesizer.delegate = self
         UserDefaults.standard.register(defaults: [
-            DefaultsKey.voiceEnabled: true,
+            // 播报默认关：用户明确要「只要铃声」。想听人声可在设置里打开。
+            DefaultsKey.voiceEnabled: false,
             DefaultsKey.chimeEnabled: true,
             DefaultsKey.volume: 1.0
         ])
@@ -205,6 +206,10 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
         beginBackgroundExecution()
         activateSession()
 
+        DiagnosticsLog.shared.record(
+            "开始循环告警：\(stationName)（铃声 \(chime.label)，震动 \(vibrate ? "开" : "关")）",
+            tag: "铃声")
+
         // 铃声：无限循环，直到用户处理
         if isChimeEnabled, startLoopingChime() {
             alarmLog.debug("持续铃声开始")
@@ -292,6 +297,7 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
     }
 
     public func stopAlarm() {
+        if isAlarming { DiagnosticsLog.shared.record("停止告警", tag: "铃声") }
         stopAlarmTasks()
         if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
         player?.stop()

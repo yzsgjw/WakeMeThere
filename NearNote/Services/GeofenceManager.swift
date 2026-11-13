@@ -11,6 +11,7 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
     private let manager = CLLocationManager()
     private let placeSearch = PlaceSearchService()
     private var lastInsideCheck: Date?
+    private var lastAcceptedFix: CLLocation?
     @Published public private(set) var monitoredReminderIds: Set<UUID> = []
     /// 系统实际接受的围栏数量（不是我们想注册的数量）。
     /// 界面拿它告诉用户「现在到底有没有在盯着」——注册失败时这里会是 0。
@@ -25,6 +26,7 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         let stamp = Self.clock.string(from: Date())
         recentEvents.insert("\(stamp) \(text)", at: 0)
         if recentEvents.count > 6 { recentEvents.removeLast(recentEvents.count - 6) }
+        DiagnosticsLog.shared.record(text, tag: "围栏")
     }
 
     private static let clock: DateFormatter = {
@@ -176,8 +178,22 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
     private func isEligible(_ reminder: Reminder) -> Bool {
         guard reminder.isEnabled, !reminder.isCompleted, !reminder.isArchived else { return false }
         let settings = SettingsStore.shared
-        if let snoozedUntil = reminder.snoozedUntil, snoozedUntil > Date() { return false }
-        if let last = reminder.lastTriggeredAt, Date().timeIntervalSince(last) < Double(settings.cooldownMinutes * 60) { return false }
+        // 冷却与推迟**每个项目各算各的**：A 站响过不该影响 B 站。
+        // 但被挡掉时必须留痕，否则就是"点了半天没反应，看不出为什么"。
+        if let snoozedUntil = reminder.snoozedUntil, snoozedUntil > Date() {
+            let minutes = max(1, Int(snoozedUntil.timeIntervalSinceNow / 60))
+            note("\(reminder.displayTitle) 已推迟，还要等 \(minutes) 分钟")
+            return false
+        }
+        if let last = reminder.lastTriggeredAt {
+            let elapsed = Date().timeIntervalSince(last)
+            let window = Double(settings.cooldownMinutes * 60)
+            if elapsed < window {
+                let left = max(1, Int((window - elapsed) / 60))
+                note("\(reminder.displayTitle) 还在冷却，剩 \(left) 分钟（可在体检卡里一键清除）")
+                return false
+            }
+        }
         // 生效时段：星期 + 时间窗，纯函数见 PlanSchedule
         // （围栏按设计常挂，所以「现在是不是该响」必须在这里判，而不是靠注册时机）
         guard reminder.isScheduled(at: Date()) else {
@@ -219,7 +235,8 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         if !force, let last = lastInsideCheck, now.timeIntervalSince(last) < 60 { return }
         lastInsideCheck = now
         guard let fix = await LocationService.shared.arrivalFix(timeout: 3, maxAge: 120) else { return }
-        guard fix.horizontalAccuracy >= 0, fix.horizontalAccuracy <= 250 else { return }
+        guard fix.horizontalAccuracy >= 0 else { return }
+        guard isPlausible(fix) else { return }
 
         let candidates = ReminderStore.shared.fetchActive().filter { $0.triggerOnArrival }
         for reminder in candidates where isEligible(reminder) {
@@ -228,10 +245,46 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
             let effectiveRadius = max(100, reminder.radius)
             let slack = max(50, effectiveRadius * 0.25) + fix.horizontalAccuracy
             guard distance <= effectiveRadius + slack else { continue }
+
+            // 精度降级：±500m 以内的"在圈里"根本不足以下结论。
+            // 这时候只发一条静默通知（不响铃、不循环），既不误报也不漏光。
+            if fix.horizontalAccuracy > 500 {
+                note("定位太差（±\(Int(fix.horizontalAccuracy))m），只发静默通知：\(reminder.displayTitle)")
+                NotificationService.shared.postSilent(for: reminder)
+                break
+            }
+            if fix.horizontalAccuracy > 250 {
+                note("定位偏弱（±\(Int(fix.horizontalAccuracy))m），复核放宽后仍按到站处理")
+            }
             note("\(reminder.displayTitle) 当前已在圈内（距 \(Int(distance))m），直接提醒")
             await fire(reminder, alternativePlaceName: nil, alternativeCoordinate: nil)
             break   // 一趟只响最近的那个，避免几个项目连环炸
         }
+    }
+
+    /// 坐标漂移过滤：地铁里 GPS 掉到 Wi-Fi 定位时，坐标会整条街地瞬移。
+    /// 两次定位之间换算出的速度超过 60 m/s（216 km/h）就判定为脏点，直接丢弃。
+    private func isPlausible(_ fix: CLLocation) -> Bool {
+        defer { lastAcceptedFix = fix }
+        guard let last = lastAcceptedFix else { return true }
+        let dt = fix.timestamp.timeIntervalSince(last.timestamp)
+        guard dt > 0.5 else { return true }        // 同一批回调，不做速度判断
+        let meters = fix.distance(from: last)
+        let implied = meters / dt
+        guard implied > 60 else { return true }
+        note("丢弃漂移点：\(Int(meters))m / \(String(format: "%.1f", dt))s（≈\(Int(implied * 3.6))km/h）")
+        return false
+    }
+
+    /// 一键清除冷却与推迟。体检卡上的「重置冷却」用，专门为了"我现在就要测一次"。
+    public func clearCooldowns() {
+        for reminder in ReminderStore.shared.fetchAll() {
+            reminder.lastTriggeredAt = nil
+            reminder.snoozedUntil = nil
+        }
+        ReminderStore.shared.save()
+        note("已清除全部冷却与推迟（测试用）")
+        note("现在走进圈内或回到 App 前台就会立刻提醒")
     }
 
     /// 只在证据明确不足时否掉到站：宁可多响一次，也不漏站。
@@ -239,6 +292,10 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
     private func confirmArrival(of reminder: Reminder) async -> Bool {
         let target = CLLocation(latitude: reminder.latitude, longitude: reminder.longitude)
         guard let fix = await LocationService.shared.arrivalFix() else { return true }
+        guard isPlausible(fix) else {
+            note("复核用的是漂移点，先按未到站处理")
+            return false
+        }
         let age = Date().timeIntervalSince(fix.timestamp)
         if age > 60 { return true }
         if fix.horizontalAccuracy < 0 || fix.horizontalAccuracy > 250 { return true }

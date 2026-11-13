@@ -36,7 +36,7 @@ public final class Reminder {
     /// bit0 = 周日 … bit6 = 周六；默认周一~周五（62 = 0b0111110）
     public var weekdayMask: Int = 62
     /// 对应 AlarmChime.rawValue
-    public var chimeName: String = AlarmChime.radar.rawValue
+    public var chimeName: String = AlarmChime.marimba.rawValue
     public var vibrationEnabled: Bool = true
     public var fullScreenOnArrival: Bool = true
 
@@ -109,6 +109,13 @@ public final class Reminder {
     }
 
     /// 列表行副标题用：「工作日 07:30–09:00」
+    /// 今天是不是已经到过一次了（用最近一次响铃时间判断）。
+    /// 通勤项目每天复用，响过就当天不再重复打扰，卡片仍留在列表里。
+    public var arrivedToday: Bool {
+        guard let last = lastTriggeredAt else { return false }
+        return Calendar.current.isDateInToday(last)
+    }
+
     public var scheduleText: String {
         PlanSchedule.summary(weekdayMask: weekdayMask, start: startTime, end: endTime)
     }

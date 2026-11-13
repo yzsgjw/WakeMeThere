@@ -123,10 +123,23 @@ struct SettingsView: View {
                         }
                         .padding(.vertical, 6)
                     }
+                    Picker("震动间隔", selection: Binding(
+                        get: { settings.vibrationSpeed },
+                        set: { settings.vibrationSpeed = $0 }
+                    )) {
+                        ForEach(VibrationSpeed.allCases) { speed in
+                            Text(speed.title).tag(speed)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(settings.vibrationSpeed.detail)
+                        .font(NearNoteStyle.Typeface.micro)
+                        .foregroundStyle(NearNoteStyle.textTertiary)
                 } header: {
                     Text("提醒")
                 } footer: {
-                    Text("新建提醒时使用这个默认距离，保存前每一站还能单独改。")
+                    Text("新建提醒时使用这个默认距离，保存前每一站还能单独改。震动间隔用在到站告警里：地铁上手麻选「慢」，怕漏选「快」。")
                 }
 
                 Section {

@@ -169,7 +169,7 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
     //
     // 通知音只能响一次（iOS 给通知音频的时长上限约 30 秒，且只在通知出现那一刻），
     // 想要「一直响到人处理」，只能靠 App 自己放音频：
-    // 铃声无限循环 + 每 1.8 秒震一次 + 每 25 秒重播一遍站名，直到 stop() 或 5 分钟兜底。
+    // 铃声无限循环 + 按设置节奏震动（默认每 1.8 秒）+ 每 25 秒重播一遍站名，直到 stop() 或 5 分钟兜底。
     // 这依赖 UIBackgroundModes: audio —— 音频在放，App 就不会被挂起。
 
     /// 正在持续响铃。
@@ -257,9 +257,11 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
     private func startVibrationLoop() {
         guard pendingVibration else { return }
         vibrateIfNeeded()
+        // 震动节奏来自设置（快 0.7s / 中 1.8s / 慢 3.5s）
+        let interval = SettingsStore.shared.vibrationSpeed.interval
         vibrationTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_800_000_000)
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     guard let self, self.isAlarming, self.pendingVibration else { return }

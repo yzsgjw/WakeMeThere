@@ -33,7 +33,12 @@ struct PlansView: View {
 
     /// 现在正在生效的项目（星期 + 时间窗都命中的那些）
     private var liveNow: [Reminder] {
-        activePlans.filter { $0.isScheduled() }
+        // 今天已经响过的不算「正在生效」——不然到站之后它还挂在生效里，看着像没结束。
+        activePlans.filter { $0.isScheduled() && !$0.arrivedToday }
+    }
+
+    private var arrivedTodayPlans: [Reminder] {
+        activePlans.filter(\.arrivedToday)
     }
 
     var body: some View {
@@ -124,6 +129,11 @@ struct PlansView: View {
             Text(liveNow.isEmpty ? "此刻没有生效中的项目" : "此刻生效中 \(liveNow.count) 个")
                 .font(NearNoteStyle.Typeface.title)
                 .foregroundStyle(NearNoteStyle.textPrimary)
+            if !arrivedTodayPlans.isEmpty {
+                Text("今天已完成 \(arrivedTodayPlans.count) 个（明天自动恢复）")
+                    .font(NearNoteStyle.Typeface.micro)
+                    .foregroundStyle(NearNoteStyle.textTertiary)
+            }
             Text(liveNow.isEmpty
                  ? "开着的项目到点会自己接管，不用手动切换。"
                  : liveNow.map { $0.title.isEmpty ? $0.placeName : $0.title }.joined(separator: " · "))
@@ -380,6 +390,10 @@ struct PlansView: View {
                     if plan.fullScreenOnArrival {
                         MetaTag(text: "全屏", symbol: "rectangle.inset.filled",
                                 tint: NearNoteStyle.textSecondary)
+                    }
+                    if plan.arrivedToday {
+                        MetaTag(text: "今日已到", symbol: "checkmark.circle.fill",
+                                tint: NearNoteStyle.accent)
                     }
                 }
                 .padding(.top, 2)

@@ -185,6 +185,10 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
             note("\(reminder.displayTitle) 已推迟，还要等 \(minutes) 分钟")
             return false
         }
+        if reminder.arrivedToday {
+            note("\(reminder.displayTitle) 今天已经到过，今天不再重复提醒（要再测一次点「重置冷却」）")
+            return false
+        }
         if let last = reminder.lastTriggeredAt {
             let elapsed = Date().timeIntervalSince(last)
             let window = Double(settings.cooldownMinutes * 60)

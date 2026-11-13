@@ -32,6 +32,34 @@ public enum RadiusMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// 震动节奏。地铁上手麻的人用「慢」，怕漏的用「快」。
+public enum VibrationSpeed: String, CaseIterable, Identifiable {
+    case fast, medium, slow
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .fast: "快"
+        case .medium: "中"
+        case .slow: "慢"
+        }
+    }
+    /// 两次震动之间的间隔（秒）
+    public var interval: Double {
+        switch self {
+        case .fast: 0.7
+        case .medium: 1.8
+        case .slow: 3.5
+        }
+    }
+    public var detail: String {
+        switch self {
+        case .fast: "每 0.7 秒震一次"
+        case .medium: "每 1.8 秒震一次"
+        case .slow: "每 3.5 秒震一次"
+        }
+    }
+}
+
 @MainActor
 public final class SettingsStore: ObservableObject {
     public static let shared = SettingsStore()
@@ -41,6 +69,7 @@ public final class SettingsStore: ObservableObject {
     @AppStorage("quietHoursStartMinutes") public var quietHoursStartMinutes = 22 * 60
     @AppStorage("quietHoursEndMinutes") public var quietHoursEndMinutes = 7 * 60
     @AppStorage("notificationCooldownMinutes") public var cooldownMinutes = 30
+    @AppStorage("vibrationSpeed") public var vibrationSpeedRaw = VibrationSpeed.medium.rawValue
     @AppStorage("shareAnonymousUsage") public var shareAnonymousUsage = false
     @AppStorage("includeDiagnosticsInReports") public var includeDiagnosticsInReports = true
     @AppStorage("recentPlacesData") private var recentPlacesData = Data()
@@ -60,6 +89,11 @@ public final class SettingsStore: ObservableObject {
     public var radiusMode: RadiusMode {
         get { RadiusMode(rawValue: radiusModeRaw) ?? .automatic }
         set { radiusModeRaw = newValue.rawValue; objectWillChange.send() }
+    }
+
+    public var vibrationSpeed: VibrationSpeed {
+        get { VibrationSpeed(rawValue: vibrationSpeedRaw) ?? .medium }
+        set { vibrationSpeedRaw = newValue.rawValue; objectWillChange.send() }
     }
 
     public func isQuiet(at date: Date = Date(), calendar: Calendar = .current) -> Bool {

@@ -122,8 +122,9 @@ struct ArrivalFullScreenView: View {
             }
         }
         .onAppear {
-            // 进来先让声音停下来：用户已经在看这一页，继续响铃只会烦
-            AlarmPlaybackService.shared.stop()
+            // 注意：这里**不能**自动停声音。
+            // 这一页正是到站那一刻弹出来的，自动停等于"响一下就没了"——
+            // 持续响铃必须等到用户真的按了「我到了」。
             AudioKeepAliveService.shared.pauseForAnnouncement()
         }
         .onDisappear {
@@ -131,12 +132,14 @@ struct ArrivalFullScreenView: View {
         }
     }
 
+    /// 「我到了」= 结束这一趟的响铃。
+    /// 通勤项目是每天复用的，绝不能 markDone —— 那会让卡片从列表里消失
+    /// （用户报的「到达后项目就不见了」就是这个）。
+    /// 这里只把项目冷却 30 分钟，同时保留在列表里，明天照常生效。
     private func complete() {
-        reminder.markDone()
-        GeofenceManager.shared.stop(reminder: reminder)
+        AlarmPlaybackService.shared.stop()
+        reminder.snoozedUntil = Date().addingTimeInterval(30 * 60)
         try? modelContext.save()
-        let location = LocationService.shared.currentLocation
-        Task { await GeofenceManager.shared.refresh(near: location) }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         close()
     }

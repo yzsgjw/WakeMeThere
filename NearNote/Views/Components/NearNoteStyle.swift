@@ -32,6 +32,9 @@ enum NearNoteStyle {
     static let textSecondary = Color(red: 0x93 / 255, green: 0xA1 / 255, blue: 0xB4 / 255, opacity: 1)
     static let textTertiary = Color(red: 0x64 / 255, green: 0x74 / 255, blue: 0x8B / 255, opacity: 1)
 
+    /// 唯一的"破坏性"色。只用在删除按钮上，不当装饰色用。
+    static let danger = Color(red: 0xE8 / 255, green: 0x4C / 255, blue: 0x4C / 255, opacity: 1)
+
     /// 兼容旧调用点
     static var secondaryText: Color { textSecondary }
 

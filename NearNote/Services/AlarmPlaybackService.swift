@@ -161,10 +161,153 @@ public final class AlarmPlaybackService: NSObject, ObservableObject {
 
     /// 立刻停止一切声音（用户点通知里的"完成"、手动结束追踪时调用）。
     public func stop() {
+        stopAlarm()
+    }
+
+    // MARK: - 持续告警（闹钟式）
+    //
+    // 通知音只能响一次（iOS 给通知音频的时长上限约 30 秒，且只在通知出现那一刻），
+    // 想要「一直响到人处理」，只能靠 App 自己放音频：
+    // 铃声无限循环 + 每 1.8 秒震一次 + 每 25 秒重播一遍站名，直到 stop() 或 5 分钟兜底。
+    // 这依赖 UIBackgroundModes: audio —— 音频在放，App 就不会被挂起。
+
+    /// 正在持续响铃。
+    @Published public private(set) var isAlarming = false
+
+    private var alarmStartedAt: Date?
+    private var vibrationTask: Task<Void, Never>?
+    private var repeatSpeechTask: Task<Void, Never>?
+
+    /// 持续告警上限。到点自动停，避免手机在包里响一整路。
+    private let alarmMaxDuration: TimeInterval = 300
+    /// 重复播报站名的间隔
+    private let repeatSpeechInterval: TimeInterval = 25
+
+    public func startAlarm(
+        stationName: String,
+        chime: AlarmChime,
+        vibrate: Bool,
+        extraSentence: String? = nil
+    ) {
+        pendingChime = chime
+        pendingVibration = vibrate
+        let sentence = Self.arrivalSentence(stationName: stationName, extra: extraSentence)
+
+        cancelCurrent()
+        stopAlarmTasks()
+        AudioKeepAliveService.shared.pauseForAnnouncement()
+
+        pendingSpeech = isVoiceEnabled ? sentence : nil
+        isAnnouncing = true
+        isAlarming = true
+        alarmStartedAt = Date()
+
+        beginBackgroundExecution()
+        activateSession()
+
+        // 铃声：无限循环，直到用户处理
+        if isChimeEnabled, startLoopingChime() {
+            alarmLog.debug("持续铃声开始")
+        } else {
+            vibrateIfNeeded()
+            speakPendingOnce()
+        }
+
+        startVibrationLoop()
+        startRepeatSpeechLoop()
+
+        timeoutTask?.cancel()
+        timeoutTask = Task { [weak self] in
+            let seconds = self?.alarmMaxDuration ?? 300
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self, self.isAlarming else { return }
+                alarmLog.debug("持续告警到上限，自动停止")
+                self.stopAlarm()
+            }
+        }
+    }
+
+    private func startLoopingChime() -> Bool {
+        guard let url = Bundle.main.url(forResource: pendingChime.resourceName, withExtension: "wav") else {
+            alarmLog.error("铃声 \(self.pendingChime.fileName) 没打进 Bundle")
+            return false
+        }
+        do {
+            let audioPlayer = try AVAudioPlayer(contentsOf: url)
+            audioPlayer.delegate = nil          // 循环模式不需要「放完接语音」的回调
+            audioPlayer.numberOfLoops = -1
+            audioPlayer.volume = Float(volume)
+            audioPlayer.prepareToPlay()
+            audioPlayer.play()
+            player = audioPlayer
+            return true
+        } catch {
+            alarmLog.error("循环铃声失败：\(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
+    private func startVibrationLoop() {
+        guard pendingVibration else { return }
+        vibrateIfNeeded()
+        vibrationTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_800_000_000)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    guard let self, self.isAlarming, self.pendingVibration else { return }
+                    AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+                }
+            }
+        }
+    }
+
+    private func startRepeatSpeechLoop() {
+        guard isVoiceEnabled, pendingSpeech != nil else { return }
+        speakPendingOnce()
+        repeatSpeechTask = Task { [weak self] in
+            let interval = self?.repeatSpeechInterval ?? 25
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    guard let self, self.isAlarming, self.isVoiceEnabled else { return }
+                    self.speakPendingOnce()
+                }
+            }
+        }
+    }
+
+    /// 只读一次播报文本，不动 isAlarming 状态（循环模式下语音结束不能收尾）。
+    private func speakPendingOnce() {
+        guard isVoiceEnabled, let text = pendingSpeech else { return }
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
+            ?? AVSpeechSynthesisVoice(language: "zh-Hans-CN")
+        utterance.rate = 0.47
+        utterance.volume = Float(volume)
+        synthesizer.speak(utterance)
+    }
+
+    public func stopAlarm() {
+        stopAlarmTasks()
         if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
         player?.stop()
         player = nil
+        isAlarming = false
+        alarmStartedAt = nil
         finishCurrent()
+    }
+
+    private func stopAlarmTasks() {
+        vibrationTask?.cancel()
+        vibrationTask = nil
+        repeatSpeechTask?.cancel()
+        repeatSpeechTask = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
     }
 
     // MARK: - 文案

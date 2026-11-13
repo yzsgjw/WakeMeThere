@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import CoreLocation
 import SwiftData
 
@@ -17,9 +18,84 @@ struct SettingsView: View {
         allSavedPlaces.filter { $0.type != .recent }
     }
 
+    private var locationAuthText: String {
+        switch locationService.authorizationStatus {
+        case .authorizedAlways: "始终允许"
+        case .authorizedWhenInUse: "仅使用期间"
+        case .denied: "已拒绝"
+        case .restricted: "受限"
+        case .notDetermined: "未询问"
+        @unknown default: "未知"
+        }
+    }
+
+    private var allPermissionsReady: Bool {
+        locationService.authorizationStatus == .authorizedAlways && notificationService.isAuthorized
+    }
+
+    /// 一键授权：通知 + 定位（先「使用期间」再「始终」，iOS 只允许这样渐进升级）。
+    private func requestEverything() {
+        notificationService.requestPermission()
+        switch locationService.authorizationStatus {
+        case .notDetermined:
+            locationService.requestWhenInUsePermission()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                locationService.requestAlwaysPermission()
+            }
+        case .authorizedWhenInUse:
+            locationService.requestAlwaysPermission()
+        case .denied, .restricted:
+            openSystemSettings()
+        default:
+            break
+        }
+        Task { await locationService.updateMonitoredRegions() }
+    }
+
+    private func openSystemSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    Button { requestEverything() } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: allPermissionsReady ? "checkmark.shield.fill" : "shield.lefthalf.filled")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(NearNoteStyle.accent)
+                                .frame(width: 26)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("一键授权")
+                                    .font(NearNoteStyle.Typeface.body)
+                                    .foregroundStyle(NearNoteStyle.textPrimary)
+                                Text(allPermissionsReady ? "三件事都齐了，围栏能唤醒 App" : "定位（始终）+ 通知，缺一项就不会响")
+                                    .font(NearNoteStyle.Typeface.micro)
+                                    .foregroundStyle(NearNoteStyle.textTertiary)
+                            }
+                            Spacer()
+                            Text(allPermissionsReady ? "已就绪" : "去开启")
+                                .font(NearNoteStyle.Typeface.label)
+                                .foregroundStyle(allPermissionsReady ? NearNoteStyle.textTertiary : NearNoteStyle.accent)
+                        }
+                        .padding(.vertical, 4)
+                    }
+
+                    SettingsRow(symbol: "location.fill", title: "定位权限", value: locationAuthText)
+                    SettingsRow(symbol: "bell.fill", title: "通知权限",
+                                value: notificationService.isAuthorized ? "已开启" : "未开启")
+                    Button { openSystemSettings() } label: {
+                        SettingsRow(symbol: "arrow.triangle.2.circlepath", title: "后台 App 刷新", value: "系统设置")
+                    }
+                    .foregroundStyle(.primary)
+                } header: {
+                    Text("权限")
+                } footer: {
+                    Text("到站提醒要三件事同时成立：定位「始终允许」、通知已开启、后台 App 刷新打开。缺一项的表现就是「明明到站了却不响」。")
+                }
+
                 Section {
                     Button { showPermissions = true } label: {
                         SettingsRow(

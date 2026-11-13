@@ -14,6 +14,10 @@ struct PlansView: View {
     @StateObject private var locationService = LocationService.shared
     @StateObject private var geofence = GeofenceManager.shared
     @StateObject private var notifications = NotificationService.shared
+    /// 右滑删除：同时最多只允许一行露出删除按钮
+    @State private var openedID: UUID?
+    @State private var dragID: UUID?
+    @State private var dragOffset: CGFloat = 0
 
     var onAdd: () -> Void
     var onMap: (() -> Void)?
@@ -268,10 +272,73 @@ struct PlansView: View {
             }
             VStack(spacing: 10) {
                 ForEach(plans) { plan in
-                    planRow(plan)
+                    swipeRow(plan)
                 }
             }
         }
+    }
+
+    // MARK: - 右滑删除
+
+    private static let deleteReveal: CGFloat = 84
+
+    /// ScrollView 里没有原生的 .swipeActions，所以自己做一个：
+    /// 卡片下面的 ZStack 底层放删除按钮，卡片按手势横向偏移把它露出来。
+    private func swipeRow(_ plan: Reminder) -> some View {
+        ZStack(alignment: .trailing) {
+            Button(role: .destructive) {
+                withAnimation(.easeOut(duration: 0.2)) { openedID = nil }
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                delete(plan)
+            } label: {
+                VStack(spacing: 4) {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("删除")
+                        .font(NearNoteStyle.Typeface.micro)
+                }
+                .foregroundStyle(.white)
+                .frame(width: Self.deleteReveal)
+                .frame(maxHeight: .infinity)
+                .background(
+                    NearNoteStyle.danger,
+                    in: RoundedRectangle(cornerRadius: NearNoteStyle.cardRadius, style: .continuous)
+                )
+            }
+            .buttonStyle(.plain)
+            .opacity(swipeOffset(plan) < -8 ? 1 : 0)
+            .allowsHitTesting(swipeOffset(plan) < -8)
+
+            planRow(plan)
+                .offset(x: swipeOffset(plan))
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 12)
+                        .onChanged { value in
+                            // 只在明显横向时接管，纵向留给 ScrollView
+                            guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                            let base: CGFloat = openedID == plan.id ? -Self.deleteReveal : 0
+                            dragID = plan.id
+                            dragOffset = min(0, max(-Self.deleteReveal - 26, base + value.translation.width))
+                        }
+                        .onEnded { value in
+                            guard dragID == plan.id else { return }
+                            let base: CGFloat = openedID == plan.id ? -Self.deleteReveal : 0
+                            let final = base + value.translation.width
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                                openedID = final < -Self.deleteReveal / 2 ? plan.id : nil
+                            }
+                            dragID = nil
+                            dragOffset = 0
+                        }
+                )
+                .animation(.spring(response: 0.32, dampingFraction: 0.86), value: openedID)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: NearNoteStyle.cardRadius, style: .continuous))
+    }
+
+    private func swipeOffset(_ plan: Reminder) -> CGFloat {
+        if dragID == plan.id { return dragOffset }
+        return openedID == plan.id ? -Self.deleteReveal : 0
     }
 
     private func planRow(_ plan: Reminder) -> some View {
@@ -330,7 +397,13 @@ struct PlansView: View {
                 .strokeBorder(NearNoteStyle.hairline, lineWidth: 1)
         }
         .contentShape(Rectangle())
-        .onTapGesture { onEdit?(plan.id) }
+        .onTapGesture {
+            if openedID == plan.id {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { openedID = nil }
+            } else {
+                onEdit?(plan.id)
+            }
+        }
         .contextMenu {
             Button {
                 onEdit?(plan.id)

@@ -10,6 +10,7 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
     public static let shared = GeofenceManager()
     private let manager = CLLocationManager()
     private let placeSearch = PlaceSearchService()
+    private var lastInsideCheck: Date?
     @Published public private(set) var monitoredReminderIds: Set<UUID> = []
     /// 系统实际接受的围栏数量（不是我们想注册的数量）。
     /// 界面拿它告诉用户「现在到底有没有在盯着」——注册失败时这里会是 0。
@@ -156,18 +157,8 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
 
     private func handle(region: CLRegion) async {
         let parsed = parse(region.identifier)
-        guard let reminder = ReminderStore.shared.fetchReminder(withId: parsed.id), reminder.isEnabled, !reminder.isCompleted, !reminder.isArchived else { return }
-        let settings = SettingsStore.shared
-        if let snoozedUntil = reminder.snoozedUntil, snoozedUntil > Date() { return }
-        if let last = reminder.lastTriggeredAt, Date().timeIntervalSince(last) < Double(settings.cooldownMinutes * 60) { return }
-        
-        // 生效时段：星期 + 时间窗，纯函数见 PlanSchedule
-        // （围栏按设计常挂，所以「现在是不是该响」必须在这里判，而不是靠注册时机）
-        guard reminder.isScheduled(at: Date()) else {
-            geofenceLogger.info("Reminder outside its schedule (weekday/time window). Suppressing.")
-            note("\(reminder.displayTitle) 进了范围，但不在生效时段，没响")
-            return
-        }
+        guard let reminder = ReminderStore.shared.fetchReminder(withId: parsed.id) else { return }
+        guard isEligible(reminder) else { return }
 
         // 到站复核：围栏事件可能带着过期或很粗的定位到达，
         // 直接响就会变成"人在高架上、隔一条街就被提醒"。
@@ -178,11 +169,33 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
             return
         }
 
+        await fire(reminder, alternativePlaceName: parsed.placeName, alternativeCoordinate: parsed.coordinate)
+    }
+
+    /// 项目本身是否处于「可以响」的状态：开着、没完成、没归档、没被推迟、没在冷却里、在当前生效时段内。
+    private func isEligible(_ reminder: Reminder) -> Bool {
+        guard reminder.isEnabled, !reminder.isCompleted, !reminder.isArchived else { return false }
+        let settings = SettingsStore.shared
+        if let snoozedUntil = reminder.snoozedUntil, snoozedUntil > Date() { return false }
+        if let last = reminder.lastTriggeredAt, Date().timeIntervalSince(last) < Double(settings.cooldownMinutes * 60) { return false }
+        // 生效时段：星期 + 时间窗，纯函数见 PlanSchedule
+        // （围栏按设计常挂，所以「现在是不是该响」必须在这里判，而不是靠注册时机）
+        guard reminder.isScheduled(at: Date()) else {
+            geofenceLogger.info("Reminder outside its schedule (weekday/time window). Suppressing.")
+            note("\(reminder.displayTitle) 不在生效时段，跳过")
+            return false
+        }
+        return true
+    }
+
+    private func fire(_ reminder: Reminder,
+                      alternativePlaceName: String?,
+                      alternativeCoordinate: CLLocationCoordinate2D?) async {
         reminder.lastTriggeredAt = Date()
         ReminderStore.shared.save()
         note("\(reminder.displayTitle) 到站，已响铃")
-        NotificationService.shared.triggerNotification(for: reminder, alternativePlaceName: parsed.placeName,
-                                                       alternativeCoordinate: parsed.coordinate)
+        NotificationService.shared.triggerNotification(for: reminder, alternativePlaceName: alternativePlaceName,
+                                                       alternativeCoordinate: alternativeCoordinate)
 
         // App 正开着时，直接把全屏到站页盖上来（锁屏/后台做不到，只能靠通知点进来）
         if reminder.fullScreenOnArrival, UIApplication.shared.applicationState == .active {
@@ -192,6 +205,33 @@ public final class GeofenceManager: NSObject, ObservableObject, CLLocationManage
         // 多站接力：这一站若是行程队列里的当前站，就自动切下一站
         // （终点则整程收尾：关灵动岛、停保活、恢复普通围栏）
         await TripRelayService.shared.relayIfNeeded(arrived: reminder.id)
+    }
+
+    // MARK: - 圈内自检
+    //
+    // `CLCircularRegion` **只在跨越边界时**回调，它从不检查"你现在是不是已经在圈里"。
+    // 于是有两种情况会永远等不到提醒：
+    // ① 注册围栏的那一刻你已经站在圈内（刚下车前打开 App、刚创建项目）；
+    // ② 系统在低功耗下漏报/迟报了这次穿越。
+    // 所以每次刷新围栏、拿到新定位、App 回到前台，都主动算一遍当前距离。
+    public func checkInsideFences(force: Bool = false) async {
+        let now = Date()
+        if !force, let last = lastInsideCheck, now.timeIntervalSince(last) < 60 { return }
+        lastInsideCheck = now
+        guard let fix = await LocationService.shared.arrivalFix(timeout: 3, maxAge: 120) else { return }
+        guard fix.horizontalAccuracy >= 0, fix.horizontalAccuracy <= 250 else { return }
+
+        let candidates = ReminderStore.shared.fetchActive().filter { $0.triggerOnArrival }
+        for reminder in candidates where isEligible(reminder) {
+            let target = CLLocation(latitude: reminder.latitude, longitude: reminder.longitude)
+            let distance = fix.distance(from: target)
+            let effectiveRadius = max(100, reminder.radius)
+            let slack = max(50, effectiveRadius * 0.25) + fix.horizontalAccuracy
+            guard distance <= effectiveRadius + slack else { continue }
+            note("\(reminder.displayTitle) 当前已在圈内（距 \(Int(distance))m），直接提醒")
+            await fire(reminder, alternativePlaceName: nil, alternativeCoordinate: nil)
+            break   // 一趟只响最近的那个，避免几个项目连环炸
+        }
     }
 
     /// 只在证据明确不足时否掉到站：宁可多响一次，也不漏站。

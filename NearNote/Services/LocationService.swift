@@ -105,6 +105,8 @@ public final class LocationService: NSObject, ObservableObject, CLLocationManage
     public func updateMonitoredRegions() async {
         await GeofenceManager.shared.refresh(near: currentLocation ?? manager.location)
         objectWillChange.send()
+        // 围栏只在跨界时回调，已经站在圈里就不会有事件 —— 主动算一遍距离
+        await GeofenceManager.shared.checkInsideFences()
     }
 
     nonisolated public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -123,6 +125,8 @@ public final class LocationService: NSObject, ObservableObject, CLLocationManage
             let service = LocationService.shared
             service.currentLocation = location
             await LiveActivityService.shared.update(for: location)
+            // 每次拿到新定位都顺手做一次「是不是已经在圈内」的自检（内部 60s 节流）
+            await GeofenceManager.shared.checkInsideFences()
             if service.lastGeofenceRefresh == nil || Date().timeIntervalSince(service.lastGeofenceRefresh!) > 300 {
                 service.lastGeofenceRefresh = Date()
                 await service.updateMonitoredRegions()

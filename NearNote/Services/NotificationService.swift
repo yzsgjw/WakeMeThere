@@ -88,7 +88,12 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
             content: testContent(for: reminder, stationName: stationName),
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         ))
-        announceArrival(stationName: stationName, reminder: reminder, deferred: 0)
+        AlarmPlaybackService.shared.announceArrival(
+            stationName: stationName,
+            chime: reminder.chime,
+            vibrate: reminder.vibrationEnabled,
+            extraSentence: reminder.title.isEmpty ? nil : reminder.title
+        )
         if reminder.fullScreenOnArrival {
             NotificationCenter.default.post(name: .arrivalOpened, object: reminder.id)
         }
@@ -106,26 +111,21 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
         return content
     }
 
-    /// 语音播报。前台：铃声 + 人声；后台/锁屏：只补人声（铃声已经由系统通知响过）。
+    /// 到站发声：**持续响到人处理**。
+    /// 通知自带的声音只响一次且上限约 30 秒，所以真正的"闹钟式"提醒由 App 自己循环播，
+    /// 靠 `UIBackgroundModes: audio` 保住进程；停止入口在通知动作「已完成」、到站全屏页、
+    /// 锁屏卡片的「结束」，以及 5 分钟兜底。
     private func announceArrival(stationName: String, reminder: Reminder, deferred: TimeInterval) {
         // 免打扰时段里通知被推迟了，声音也跟着推迟，否则等于绕过用户设的安静时间
         guard deferred < 2 else { return }
         let extra = reminder.title.isEmpty ? nil : reminder.title
         // 铃声与震动读「项目」自己的设置，不看全局开关
-        if UIApplication.shared.applicationState == .active {
-            AlarmPlaybackService.shared.announceArrival(
-                stationName: stationName,
-                chime: reminder.chime,
-                vibrate: reminder.vibrationEnabled,
-                extraSentence: extra
-            )
-        } else {
-            // 后台/锁屏：铃声已经由系统通知响过了，这里只补人声 + 震动
-            AlarmPlaybackService.shared.speak(
-                AlarmPlaybackService.arrivalSentence(stationName: stationName, extra: extra),
-                vibrate: reminder.vibrationEnabled
-            )
-        }
+        AlarmPlaybackService.shared.startAlarm(
+            stationName: stationName,
+            chime: reminder.chime,
+            vibrate: reminder.vibrationEnabled,
+            extraSentence: extra
+        )
     }
 
     nonisolated public func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
@@ -142,9 +142,10 @@ public final class NotificationService: NSObject, ObservableObject, UNUserNotifi
                   let reminder = ReminderStore.shared.fetchReminder(withId: id) else { return }
             switch response.actionIdentifier {
             case "DONE_ACTION":
+                // 项目是每天复用的通勤项：到站只结束"这一趟的声音"，
+                // 不能 markDone，否则卡片会从列表里消失（用户抱怨的正是这个）。
                 AlarmPlaybackService.shared.stop()
-                reminder.markDone()
-                GeofenceManager.shared.stop(reminder: reminder)
+                reminder.snoozedUntil = Date().addingTimeInterval(30 * 60)
             case "WAIT_ORIGINAL_ACTION":
                 reminder.alternativesDisabled = true
             case "SNOOZE_ACTION":

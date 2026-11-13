@@ -62,7 +62,7 @@ struct MainView: View {
             // 每次回到前台重新核对一遍：少了就补，改了位置就换新圈。
             Task {
                 DiagnosticsLog.shared.record("回到前台，重新核对围栏", tag: "围栏")
-                await locationService.updateMonitoredRegions()
+                await LocationService.shared.updateMonitoredRegions()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .arrivalOpened)) { note in
